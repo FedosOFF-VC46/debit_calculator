@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Дебиторка</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Интерфейс</p>
+          <h1>Контроль дебиторской задолжности</h1>
+          <p class="lede">
+            Единое рабочее пространство для учета начислений, оплат, остатков и просрочек по компаниям
+          </p>
+        </div>
+        <div class="hero-side">
+          <article class="hero-note">
+            <span>Компании в системе</span>
+            <strong id="companies-in-system">Импортируйте JSON</strong>
+          </article>
+          <article class="hero-note">
+            <span>Дата расчета</span>
+            <strong id="as-of-date">—</strong>
+          </article>
+        </div>
+      </section>
+
+      <nav class="tabbar" id="tabbar">
+        <button class="tab is-active" data-tab="overview" type="button">Обзор</button>
+        <button class="tab" data-tab="registry" type="button">Реестр</button>
+        <button class="tab" data-tab="workspace" type="button">Панель работы</button>
+      </nav>
+
+      <section class="view is-active" id="view-overview">
+        <section class="stats" id="summary-cards"></section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Сводка</p>
+              <h2>Записи по компаниям</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Компания</th>
+                  <th>Записей</th>
+                  <th>Выставлено</th>
+                  <th>Оплачено</th>
+                  <th>Остаток</th>
+                  <th>Штраф</th>
+                </tr>
+              </thead>
+              <tbody id="company-table"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Детализация</p>
+              <h2>Записи выбранной компании</h2>
+            </div>
+            <button id="reset-overview-filters" class="button button-ghost" type="button">Сбросить фильтры</button>
+          </div>
+          <div id="overview-detail"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-registry">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Реестр</p>
+              <h2>Все записи</h2>
+            </div>
+            <button id="reset-registry-filters" class="button button-ghost" type="button">Сбросить фильтры</button>
+          </div>
+
+          <div id="registry-table-container"></div>
+        </section>
+
+        <section class="detail-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Запись</p>
+                <h2>Подробности</h2>
+              </div>
+            </div>
+            <div id="registry-detail" class="detail-card"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Платежи</p>
+                <h2>Платежи по записи</h2>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Сумма</th>
+                    <th>Дата</th>
+                    <th>Дней просрочки</th>
+                    <th>Штраф</th>
+                  </tr>
+                </thead>
+                <tbody id="payments-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="view" id="view-workspace">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Настройки</p>
+              <h2>Параметры расчета</h2>
+            </div>
+            <button id="save-settings" class="button" type="button">Сохранить настройки</button>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <span>Дата расчета</span>
+              <div class="field-actions">
+                <input id="settings-as-of-date" class="search" type="date" />
+                <button id="set-as-of-today" class="button button-ghost button-inline" type="button">Сегодня</button>
+              </div>
+            </div>
+            <label class="field">
+              <span>Штраф в день</span>
+              <input id="settings-daily-rate" class="search" type="number" step="0.0001" min="0" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Данные</p>
+              <h2>Импорт и экспорт JSON</h2>
+            </div>
+            <button id="export-json" class="button" type="button">Экспорт JSON</button>
+          </div>
+          <div class="form-grid data-transfer-grid">
+            <div class="field">
+              <span>Импорт из файла</span>
+              <div class="field-actions">
+                <button id="import-json-trigger" class="button button-ghost" type="button">Выбрать JSON</button>
+                <input id="import-json-file" class="is-hidden" type="file" accept="application/json,.json" />
+              </div>
+              <small class="field-hint">Подходит для переноса базы между устройствами и создания резервной копии.</small>
+            </div>
+            <div class="field">
+              <span>Вставить JSON</span>
+              <textarea
+                id="import-json-text"
+                class="search textarea"
+                rows="8"
+                placeholder="Вставьте сюда JSON целиком, затем нажмите «Импортировать JSON»"
+              ></textarea>
+              <div class="field-actions">
+                <button id="import-json-text-button" class="button button-ghost" type="button">Импортировать JSON</button>
+              </div>
+              <small class="field-hint">Импорт заменяет текущие данные в программе на загруженную версию.</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="workspace-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Периоды</p>
+                <h2>Добавить период и дедлайн</h2>
+              </div>
+              <button id="add-period" class="button" type="button">Добавить период</button>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>Месяц</span>
+                <select id="period-month" class="search">
+                  <option value="">Выберите месяц</option>
+                  <option value="Декабрь">Декабрь</option>
+                  <option value="Январь">Январь</option>
+                  <option value="Февраль">Февраль</option>
+                  <option value="Март">Март</option>
+                  <option value="Апрель">Апрель</option>
+                  <option value="Май">Май</option>
+                  <option value="Июнь">Июнь</option>
+                  <option value="Июль">Июль</option>
+                  <option value="Август">Август</option>
+                  <option value="Сентябрь">Сентябрь</option>
+                  <option value="Октябрь">Октябрь</option>
+                  <option value="Ноябрь">Ноябрь</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Год</span>
+                <select id="period-year" class="search">
+                  <option value="">Выберите год</option>
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Дедлайн</span>
+                <input id="period-due-date" class="search" type="date" />
+              </label>
+            </div>
+            <div class="table-wrap table-window">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Месяц</th>
+                    <th>Год</th>
+                    <th>Дедлайн</th>
+                    <th>Записей</th>
+                    <th>Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="periods-table"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Записи</p>
+                <h2>Добавить новую запись</h2>
+              </div>
+              <button id="add-record" class="button" type="button">Добавить запись</button>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <span>Компания</span>
+                <div class="city-picker">
+                  <select id="record-company-select" class="search"></select>
+                  <button id="toggle-new-company" class="button button-ghost button-inline" type="button">Новая компания</button>
+                </div>
+                <input id="record-company-new" class="search is-hidden" type="text" placeholder="Например: Альфа" />
+                <small class="field-hint">Можно выбрать существующую компанию из базы или добавить новую.</small>
+              </div>
+              <div class="field">
+                <span>Город</span>
+                <div class="city-picker">
+                  <select id="record-city-select" class="search"></select>
+                  <button id="toggle-new-city" class="button button-ghost button-inline" type="button">Новый город</button>
+                </div>
+                <input id="record-city-new" class="search is-hidden" type="text" placeholder="Например: Город" />
+                <small class="field-hint">Рекомендуется вводить только название города, без `г.` и в одном формате.</small>
+              </div>
+              <div class="field">
+                <span>Улица/Пригород</span>
+                <div class="city-picker">
+                  <select id="record-street-select" class="search"></select>
+                  <button id="toggle-new-street" class="button button-ghost button-inline" type="button">Новая улица/пригород</button>
+                </div>
+                <input id="record-street-new" class="search is-hidden" type="text" placeholder="Необязательно" />
+                <small class="field-hint">Поле необязательное. Если нужно, можно выбрать существующую улицу/пригород или добавить новый.</small>
+              </div>
+              <label class="field">
+                <span>Примечание</span>
+                <input id="record-note" class="search" type="text" placeholder="Необязательно" />
+              </label>
+              <label class="field">
+                <span>Месяц</span>
+                <select id="record-period-month" class="search"></select>
+              </label>
+              <label class="field">
+                <span>Год</span>
+                <select id="record-period-year" class="search"></select>
+              </label>
+              <div class="field">
+                <span>Дедлайн</span>
+                <input id="record-period-deadline" class="search" type="text" placeholder="Выберите месяц и год" readonly />
+                <small id="record-period-help" class="field-hint"></small>
+              </div>
+              <label class="field">
+                <span>Общая сумма к оплате</span>
+                <input id="record-invoice-amount" class="search" type="number" step="0.01" min="0" />
+              </label>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Текущая запись</p>
+              <h2>Управление оплатами</h2>
+            </div>
+            <div class="actions">
+              <button id="reset-workspace-filters" class="button button-ghost" type="button">Сбросить фильтры</button>
+              <button id="delete-record" class="button button-ghost" type="button">Удалить запись</button>
+            </div>
+          </div>
+          <div id="workspace-record-filters"></div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Дата оплаты</span>
+              <input id="payment-date" class="search" type="date" />
+            </label>
+            <label class="field">
+              <span>Сумма оплаты</span>
+              <input id="payment-amount" class="search" type="number" step="0.01" min="0" />
+            </label>
+            <div class="field field-actions">
+              <span>Действие</span>
+              <button id="add-payment" class="button" type="button">Добавить оплату</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Запись</th>
+                  <th>Платеж</th>
+                  <th>Дата</th>
+                  <th>Штраф</th>
+                  <th>Удалить</th>
+                </tr>
+              </thead>
+              <tbody id="workspace-payments-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <div class="modal-backdrop" id="overview-modal">
+        <div class="modal-window">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Запись</p>
+              <h2>Карточка записи</h2>
+            </div>
+            <button id="close-overview-modal" class="button button-ghost" type="button">Закрыть</button>
+          </div>
+          <div id="overview-modal-content" class="detail-card"></div>
+        </div>
+      </div>
+
+      <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+    </main>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
