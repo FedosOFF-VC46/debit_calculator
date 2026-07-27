@@ -87,6 +87,20 @@ const YEAR_OPTIONS = [2024, 2025, 2026];
 const PAYMENT_DATE_STATUS_OPTIONS = ["Есть неизвестные даты", "Все даты указаны"];
 
 const MONTH_ORDER = Object.fromEntries(MONTH_OPTIONS.map((month, index) => [month, index + 1]));
+const MONTH_TO_ISO = {
+  Январь: "01",
+  Февраль: "02",
+  Март: "03",
+  Апрель: "04",
+  Май: "05",
+  Июнь: "06",
+  Июль: "07",
+  Август: "08",
+  Сентябрь: "09",
+  Октябрь: "10",
+  Ноябрь: "11",
+  Декабрь: "12",
+};
 let toastTimerSeed = 0;
 
 function formatMoney(value) {
@@ -319,6 +333,19 @@ function getSelectedRecordPeriod() {
     return null;
   }
   return state.data.periods.find((period) => period.month === state.recordFormMonth && Number(period.year) === year) || null;
+}
+
+function getPeriodStartIso(period) {
+  if (!period?.month || !period?.year) {
+    return "";
+  }
+
+  const month = MONTH_TO_ISO[period.month];
+  if (!month) {
+    return "";
+  }
+
+  return `${period.year}-${month}-01`;
 }
 
 function toggleRegistryFilter(name) {
@@ -1186,6 +1213,7 @@ function renderWorkspaceRecords(records) {
   const periodYearSelect = document.getElementById("record-period-year");
   const periodDeadlineInput = document.getElementById("record-period-deadline");
   const periodHelp = document.getElementById("record-period-help");
+  const paymentDateInput = document.getElementById("payment-date");
   const companyOptions = getCompanyOptions(state.data.records);
   const cityOptions = getCityOptions(records);
   const currentCity = getCurrentFormCity();
@@ -1360,6 +1388,15 @@ function renderWorkspaceRecords(records) {
   }
 
   const selected = filteredRecords.find((record) => record.id === state.selectedRecordId);
+  const selectedPaymentPeriod = state.data.periods.find((period) => period.id === selected?.periodId) || null;
+  const minPaymentDate = getPeriodStartIso(selectedPaymentPeriod);
+  const maxPaymentDate = getTodayIso();
+  paymentDateInput.min = minPaymentDate || "";
+  paymentDateInput.max = maxPaymentDate;
+  if (paymentDateInput.value && ((minPaymentDate && paymentDateInput.value < minPaymentDate) || paymentDateInput.value > maxPaymentDate)) {
+    paymentDateInput.value = "";
+  }
+
   const tbody = document.getElementById("workspace-payments-table");
   if (!selected?.payments.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Платежей у выбранной записи пока нет.</td></tr>';
@@ -1488,6 +1525,23 @@ async function handleAddPayment() {
   const date = document.getElementById("payment-date").value;
   const amount = toNumber(document.getElementById("payment-amount").value);
   if (!record || !date || !Number.isFinite(amount)) {
+    return;
+  }
+
+  const period = state.data.periods.find((item) => item.id === record.periodId) || null;
+  const minPaymentDate = getPeriodStartIso(period);
+  const maxPaymentDate = getTodayIso();
+
+  if (minPaymentDate && date < minPaymentDate) {
+    showToast(
+      "Некорректная дата оплаты",
+      `Для периода ${period.month} ${period.year} дата оплаты не может быть раньше ${formatDate(minPaymentDate)}.`,
+    );
+    return;
+  }
+
+  if (date > maxPaymentDate) {
+    showToast("Некорректная дата оплаты", `Дата оплаты не может быть позже ${formatDate(maxPaymentDate)}.`);
     return;
   }
 
