@@ -29,6 +29,7 @@ const state = {
   isAddingNewStreet: false,
   editingPeriodId: null,
   editingPeriodDueDate: "",
+  editingPaymentId: null,
   recordFormCompany: "",
   recordFormCity: "",
   recordFormStreet: "",
@@ -1214,6 +1215,10 @@ function renderWorkspaceRecords(records) {
   const periodDeadlineInput = document.getElementById("record-period-deadline");
   const periodHelp = document.getElementById("record-period-help");
   const paymentDateInput = document.getElementById("payment-date");
+  const paymentAmountInput = document.getElementById("payment-amount");
+  const paymentSubmitButton = document.getElementById("add-payment");
+  const paymentCancelButton = document.getElementById("cancel-payment-edit");
+  const paymentModeHint = document.getElementById("payment-mode-hint");
   const companyOptions = getCompanyOptions(state.data.records);
   const cityOptions = getCityOptions(records);
   const currentCity = getCurrentFormCity();
@@ -1388,6 +1393,10 @@ function renderWorkspaceRecords(records) {
   }
 
   const selected = filteredRecords.find((record) => record.id === state.selectedRecordId);
+  const editingPayment = selected?.payments.find((payment) => payment.id === state.editingPaymentId) || null;
+  if (state.editingPaymentId && !editingPayment) {
+    resetPaymentForm();
+  }
   const selectedPaymentPeriod = state.data.periods.find((period) => period.id === selected?.periodId) || null;
   const minPaymentDate = getPeriodStartIso(selectedPaymentPeriod);
   const maxPaymentDate = getTodayIso();
@@ -1396,10 +1405,19 @@ function renderWorkspaceRecords(records) {
   if (paymentDateInput.value && ((minPaymentDate && paymentDateInput.value < minPaymentDate) || paymentDateInput.value > maxPaymentDate)) {
     paymentDateInput.value = "";
   }
+  paymentDateInput.disabled = !selected;
+  paymentAmountInput.disabled = !selected;
+  paymentSubmitButton.disabled = !selected;
+  paymentSubmitButton.textContent = state.editingPaymentId ? "Сохранить изменения" : "Добавить оплату";
+  paymentCancelButton.classList.toggle("is-hidden", !state.editingPaymentId);
+  paymentCancelButton.disabled = !state.editingPaymentId;
+  paymentModeHint.textContent = state.editingPaymentId
+    ? "Редактирование платежа: измените дату или сумму и сохраните изменения."
+    : "Выберите запись и добавьте новый платеж.";
 
   const tbody = document.getElementById("workspace-payments-table");
   if (!selected?.payments.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Платежей у выбранной записи пока нет.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Платежей у выбранной записи пока нет.</td></tr>';
     return;
   }
 
@@ -1411,6 +1429,7 @@ function renderWorkspaceRecords(records) {
           <td>${formatMoney(payment.amount)}</td>
           <td class="${payment.isDateUnknown ? "warn" : ""}">${formatPaymentDate(payment)}</td>
           <td class="${payment.penalty > 0 ? "danger" : ""}">${formatMoney(payment.penalty)}</td>
+          <td><button class="button button-ghost" data-edit-payment="${payment.id}" type="button">Редактировать</button></td>
           <td><button class="button button-ghost" data-delete-payment="${payment.id}" type="button">Удалить</button></td>
         </tr>
       `,
@@ -1444,6 +1463,37 @@ function rerender() {
 
 function getSelectedRecord() {
   return state.data.records.find((record) => record.id === state.selectedRecordId) || null;
+}
+
+function resetPaymentForm() {
+  state.editingPaymentId = null;
+  document.getElementById("payment-date").value = "";
+  document.getElementById("payment-amount").value = "";
+}
+
+function validatePaymentForm(record, date, amount) {
+  if (!record || !date || !Number.isFinite(amount)) {
+    return false;
+  }
+
+  const period = state.data.periods.find((item) => item.id === record.periodId) || null;
+  const minPaymentDate = getPeriodStartIso(period);
+  const maxPaymentDate = getTodayIso();
+
+  if (minPaymentDate && date < minPaymentDate) {
+    showToast(
+      "Некорректная дата оплаты",
+      `Для периода ${period.month} ${period.year} дата оплаты не может быть раньше ${formatDate(minPaymentDate)}.`,
+    );
+    return false;
+  }
+
+  if (date > maxPaymentDate) {
+    showToast("Некорректная дата оплаты", `Дата оплаты не может быть позже ${formatDate(maxPaymentDate)}.`);
+    return false;
+  }
+
+  return true;
 }
 
 async function handleAddPeriod() {
@@ -1524,24 +1574,22 @@ async function handleAddPayment() {
   const record = getSelectedRecord();
   const date = document.getElementById("payment-date").value;
   const amount = toNumber(document.getElementById("payment-amount").value);
-  if (!record || !date || !Number.isFinite(amount)) {
+  if (!validatePaymentForm(record, date, amount)) {
     return;
   }
 
-  const period = state.data.periods.find((item) => item.id === record.periodId) || null;
-  const minPaymentDate = getPeriodStartIso(period);
-  const maxPaymentDate = getTodayIso();
-
-  if (minPaymentDate && date < minPaymentDate) {
-    showToast(
-      "Некорректная дата оплаты",
-      `Для периода ${period.month} ${period.year} дата оплаты не может быть раньше ${formatDate(minPaymentDate)}.`,
-    );
-    return;
-  }
-
-  if (date > maxPaymentDate) {
-    showToast("Некорректная дата оплаты", `Дата оплаты не может быть позже ${formatDate(maxPaymentDate)}.`);
+  if (state.editingPaymentId) {
+    const payment = record.payments.find((item) => item.id === state.editingPaymentId);
+    if (!payment) {
+      return;
+    }
+    payment.date = date;
+    payment.amount = Number(amount.toFixed(2));
+    delete payment.dateUnknown;
+    await saveData();
+    resetPaymentForm();
+    showToast("Оплата обновлена", `${formatMoney(amount)} от ${formatDate(date)} сохранены.`);
+    rerender();
     return;
   }
 
@@ -1552,8 +1600,7 @@ async function handleAddPayment() {
   });
 
   await saveData();
-  document.getElementById("payment-date").value = "";
-  document.getElementById("payment-amount").value = "";
+  resetPaymentForm();
   showToast("Оплата добавлена", `${formatMoney(amount)} от ${formatDate(date)} сохранены.`);
   rerender();
 }
@@ -1574,6 +1621,7 @@ async function handleDeleteRecord() {
   }
   state.data.records = state.data.records.filter((record) => record.id !== state.selectedRecordId);
   state.selectedRecordId = null;
+  resetPaymentForm();
   await saveData();
   rerender();
 }
@@ -1608,7 +1656,23 @@ async function handleDeletePayment(paymentId) {
     return;
   }
   record.payments = record.payments.filter((payment) => payment.id !== paymentId);
+  if (state.editingPaymentId === paymentId) {
+    resetPaymentForm();
+  }
   await saveData();
+  rerender();
+}
+
+function handleStartPaymentEdit(paymentId) {
+  const record = getSelectedRecord();
+  const payment = record?.payments.find((item) => item.id === paymentId);
+  if (!payment) {
+    return;
+  }
+
+  state.editingPaymentId = payment.id;
+  document.getElementById("payment-date").value = payment.dateUnknown ? "" : payment.date || "";
+  document.getElementById("payment-amount").value = String(payment.amount ?? "");
   rerender();
 }
 
@@ -1842,6 +1906,10 @@ async function main() {
   document.getElementById("add-period").addEventListener("click", handleAddPeriod);
   document.getElementById("add-record").addEventListener("click", handleAddRecord);
   document.getElementById("add-payment").addEventListener("click", handleAddPayment);
+  document.getElementById("cancel-payment-edit").addEventListener("click", () => {
+    resetPaymentForm();
+    rerender();
+  });
   document.getElementById("save-settings").addEventListener("click", handleSaveSettings);
   document.getElementById("export-json").addEventListener("click", handleExportJson);
   document.getElementById("import-json-trigger").addEventListener("click", () => {
@@ -1981,6 +2049,7 @@ async function main() {
   document.getElementById("workspace-record-filters").addEventListener("change", (event) => {
     if (event.target.id === "payment-record-select") {
       state.selectedRecordId = event.target.value || null;
+      resetPaymentForm();
       rerender();
       return;
     }
@@ -2032,6 +2101,11 @@ async function main() {
   });
 
   document.getElementById("workspace-payments-table").addEventListener("click", async (event) => {
+    const editButton = event.target.closest("[data-edit-payment]");
+    if (editButton) {
+      handleStartPaymentEdit(editButton.dataset.editPayment);
+      return;
+    }
     const button = event.target.closest("[data-delete-payment]");
     if (!button) return;
     await handleDeletePayment(button.dataset.deletePayment);
