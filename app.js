@@ -37,6 +37,8 @@ const state = {
   recordFormYear: "",
   isOverviewModalOpen: false,
   isXlsxGuideOpen: false,
+  overviewPeriodFrom: "",
+  overviewPeriodTo: "",
   overviewOpenFilter: null,
   overviewFilters: {
     cities: [],
@@ -209,6 +211,12 @@ function comparePeriods(left, right, direction = "desc") {
   return direction === "asc" ? leftValue - rightValue : rightValue - leftValue;
 }
 
+function getPeriodKey(month, year) {
+  const monthNumber = MONTH_ORDER[month] || 0;
+  const normalizedYear = Number(year || 0);
+  return normalizedYear * 100 + monthNumber;
+}
+
 function isMultiSelected(values, candidate) {
   return !values.length || values.includes(String(candidate));
 }
@@ -229,6 +237,57 @@ function formatFilterSummary(label, values) {
     return label;
   }
   return `${label}: ${values.length}`;
+}
+
+function getPeriodRangeOptions(records) {
+  const options = new Map();
+  records.forEach((record) => {
+    if (!record.periodMonth || !record.periodYear) {
+      return;
+    }
+    const key = String(getPeriodKey(record.periodMonth, record.periodYear));
+    if (!options.has(key)) {
+      options.set(key, {
+        value: key,
+        label: `${record.periodMonth} ${record.periodYear}`,
+      });
+    }
+  });
+  return [...options.values()].sort((left, right) => Number(left.value) - Number(right.value));
+}
+
+function normalizeOverviewPeriodRange(fromValue, toValue) {
+  if (!fromValue && !toValue) {
+    return { from: 0, to: 0 };
+  }
+  const from = Number(fromValue || 0);
+  const to = Number(toValue || 0);
+  if (from && to && from > to) {
+    return { from: to, to: from };
+  }
+  return { from, to };
+}
+
+function matchesOverviewPeriodRange(record) {
+  const { from, to } = normalizeOverviewPeriodRange(state.overviewPeriodFrom, state.overviewPeriodTo);
+  if (!from && !to) {
+    return true;
+  }
+  const key = getPeriodKey(record.periodMonth, record.periodYear);
+  if (!key) {
+    return false;
+  }
+  if (from && key < from) {
+    return false;
+  }
+  if (to && key > to) {
+    return false;
+  }
+  return true;
+}
+
+function getOverviewScopedRecords(records) {
+  return records.filter((record) => matchesOverviewPeriodRange(record));
 }
 
 function normalizeSpreadsheetHeader(value) {
@@ -1545,9 +1604,46 @@ function renderSummary(summary) {
   setText("companies-in-system", companies.length ? companies.join(" / ") : "Пока нет компаний");
 }
 
-function renderCompanyTable(companies) {
+function renderCompanyTable(records) {
   const tbody = document.getElementById("company-table");
   const mobileCards = document.getElementById("company-mobile-cards");
+  const periodFiltersTarget = document.getElementById("company-period-filters");
+  const periodOptions = getPeriodRangeOptions(getDerived().records);
+
+  periodFiltersTarget.innerHTML = `
+    <label class="field field-inline">
+      <span>Период с</span>
+      <select id="overview-period-from" class="search">
+        <option value="">С начала</option>
+        ${periodOptions
+          .map((option) => `<option value="${option.value}" ${state.overviewPeriodFrom === option.value ? "selected" : ""}>${option.label}</option>`)
+          .join("")}
+      </select>
+    </label>
+    <label class="field field-inline">
+      <span>Период по</span>
+      <select id="overview-period-to" class="search">
+        <option value="">По последний</option>
+        ${periodOptions
+          .map((option) => `<option value="${option.value}" ${state.overviewPeriodTo === option.value ? "selected" : ""}>${option.label}</option>`)
+          .join("")}
+      </select>
+    </label>
+    <button id="reset-overview-period" class="button button-ghost button-inline" type="button">Сбросить период</button>
+  `;
+
+  const companies = getCompanyOptions(records).map((company) => {
+    const rows = records.filter((record) => record.company === company);
+    return {
+      company,
+      count: rows.length,
+      invoiceAmount: Number(rows.reduce((sum, row) => sum + row.invoiceAmount, 0).toFixed(2)),
+      paidAmount: Number(rows.reduce((sum, row) => sum + row.paidAmount, 0).toFixed(2)),
+      outstandingAmount: Number(rows.reduce((sum, row) => sum + row.outstandingAmount, 0).toFixed(2)),
+      totalPenalty: Number(rows.reduce((sum, row) => sum + row.totalPenalty, 0).toFixed(2)),
+    };
+  });
+
   if (!companies.length) {
     mobileCards.innerHTML = '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Пока нет данных по компаниям.</div></div>';
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Пока нет данных по компаниям.</td></tr>';
@@ -2481,17 +2577,19 @@ function renderWorkspaceSettings() {
 
 function rerender() {
   const derived = getDerived();
+  const overviewRecords = getOverviewScopedRecords(derived.records);
+  const overviewCompanies = getCompanyOptions(overviewRecords).map((company) => ({ company }));
 
   setText("as-of-date", formatDate(state.data.settings.asOfDate));
   renderTabs();
   renderSummary(derived.summary);
-  renderCompanyTable(derived.companies);
+  renderCompanyTable(overviewRecords);
 
-  if (!state.selectedCompany || !derived.companies.some((company) => company.company === state.selectedCompany)) {
-    state.selectedCompany = derived.companies[0]?.company || null;
+  if (!state.selectedCompany || !overviewCompanies.some((company) => company.company === state.selectedCompany)) {
+    state.selectedCompany = overviewCompanies[0]?.company || null;
   }
-  renderOverviewDetail(derived.records);
-  renderOverviewModal(derived.records.find((record) => record.id === state.selectedRecordId));
+  renderOverviewDetail(overviewRecords);
+  renderOverviewModal(overviewRecords.find((record) => record.id === state.selectedRecordId));
   renderRegistry(derived.records);
   renderPeriods(derived.periods, state.data.records);
   renderWorkspaceRecords(derived.records);
@@ -2736,6 +2834,27 @@ async function main() {
     const card = event.target.closest("[data-company]");
     if (!card) return;
     state.selectedCompany = card.dataset.company;
+    rerender();
+  });
+
+  document.getElementById("company-period-filters").addEventListener("change", (event) => {
+    if (event.target.id === "overview-period-from") {
+      state.overviewPeriodFrom = event.target.value;
+      rerender();
+      return;
+    }
+    if (event.target.id === "overview-period-to") {
+      state.overviewPeriodTo = event.target.value;
+      rerender();
+    }
+  });
+
+  document.getElementById("company-period-filters").addEventListener("click", (event) => {
+    if (event.target.id !== "reset-overview-period") {
+      return;
+    }
+    state.overviewPeriodFrom = "";
+    state.overviewPeriodTo = "";
     rerender();
   });
 

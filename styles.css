@@ -211,6 +211,17 @@ h2 {
   display: block;
 }
 
+.field-inline {
+  min-width: 180px;
+}
+
+.field-inline span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .city-picker {
   display: flex;
   gap: 10px;
