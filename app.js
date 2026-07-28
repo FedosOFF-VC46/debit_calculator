@@ -44,6 +44,8 @@ const state = {
     months: [],
     years: [],
     paymentDateStatus: [],
+    outstandingStatus: [],
+    penaltyStatus: [],
     monthSort: "none",
     yearSort: "none",
   },
@@ -55,6 +57,8 @@ const state = {
     months: [],
     years: [],
     paymentDateStatus: [],
+    outstandingStatus: [],
+    penaltyStatus: [],
     monthSort: "none",
     yearSort: "none",
   },
@@ -88,6 +92,8 @@ const MONTH_OPTIONS = [
 
 const YEAR_OPTIONS = [2024, 2025, 2026];
 const PAYMENT_DATE_STATUS_OPTIONS = ["Есть неизвестные даты", "Все даты указаны"];
+const OUTSTANDING_STATUS_OPTIONS = ["Отсутствует", "Присутствует"];
+const PENALTY_STATUS_OPTIONS = ["Штрафа нет", "Есть штраф"];
 
 const MONTH_ORDER = Object.fromEntries(MONTH_OPTIONS.map((month, index) => [month, index + 1]));
 const MONTH_TO_ISO = {
@@ -317,6 +323,38 @@ function matchesPaymentDateStatus(record, selectedStatuses) {
     }
     if (status === "Все даты указаны") {
       return !hasUnknown;
+    }
+    return true;
+  });
+}
+
+function matchesOutstandingStatus(record, selectedStatuses) {
+  if (!selectedStatuses.length) {
+    return true;
+  }
+  const hasOutstanding = Number(record.outstandingAmount || 0) > 0;
+  return selectedStatuses.some((status) => {
+    if (status === "Присутствует") {
+      return hasOutstanding;
+    }
+    if (status === "Отсутствует") {
+      return !hasOutstanding;
+    }
+    return true;
+  });
+}
+
+function matchesPenaltyStatus(record, selectedStatuses) {
+  if (!selectedStatuses.length) {
+    return true;
+  }
+  const hasPenalty = Number(record.totalPenalty || 0) > 0;
+  return selectedStatuses.some((status) => {
+    if (status === "Есть штраф") {
+      return hasPenalty;
+    }
+    if (status === "Штрафа нет") {
+      return !hasPenalty;
     }
     return true;
   });
@@ -1509,10 +1547,35 @@ function renderSummary(summary) {
 
 function renderCompanyTable(companies) {
   const tbody = document.getElementById("company-table");
+  const mobileCards = document.getElementById("company-mobile-cards");
   if (!companies.length) {
+    mobileCards.innerHTML = '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Пока нет данных по компаниям.</div></div>';
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Пока нет данных по компаниям.</td></tr>';
     return;
   }
+
+  mobileCards.innerHTML = `
+    <div class="mobile-card-list mobile-card-list-compact is-mobile-only">
+      ${companies
+        .map(
+          (company) => `
+            <article class="mobile-record-card is-clickable ${state.selectedCompany === company.company ? "is-active" : ""}" data-company="${company.company}">
+              <div class="mobile-card-head">
+                <strong>${company.company}</strong>
+                <span class="mobile-card-period">${number.format(company.count)} записей</span>
+              </div>
+              <div class="mobile-card-grid">
+                <div><span>Выставлено</span><strong>${formatMoney(company.invoiceAmount)}</strong></div>
+                <div><span>Оплачено</span><strong>${formatMoney(company.paidAmount)}</strong></div>
+                <div><span>Остаток</span><strong class="${company.outstandingAmount > 0 ? "warn" : ""}">${formatMoney(company.outstandingAmount)}</strong></div>
+                <div><span>Штраф</span><strong class="${company.totalPenalty > 0 ? "danger" : ""}">${formatMoney(company.totalPenalty)}</strong></div>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 
   tbody.innerHTML = companies
     .map(
@@ -1530,6 +1593,180 @@ function renderCompanyTable(companies) {
     .join("");
 }
 
+function renderMobileOverviewCards(records, emptyMessage) {
+  if (!records.length) {
+    return `<div class="mobile-card-list is-mobile-only"><div class="empty-state">${emptyMessage}</div></div>`;
+  }
+
+  return `
+    <div class="mobile-card-list mobile-card-list-compact is-mobile-only">
+      ${records
+        .map(
+          (record) => `
+            <article class="mobile-record-card is-clickable ${state.selectedRecordId === record.id ? "is-active" : ""}" data-record-id="${record.id}">
+              <div class="mobile-card-head">
+                <strong>${record.city}</strong>
+                <span class="mobile-card-period">${record.periodMonth} ${record.periodYear || ""}</span>
+              </div>
+              <div class="mobile-card-subhead">${record.street || "Без улицы/пригорода"}</div>
+              <div class="mobile-card-meta">
+                <span>Дедлайн</span>
+                <strong>${formatDate(record.dueDate)}</strong>
+              </div>
+              <div class="mobile-card-grid">
+                <div><span>Выставлено</span><strong>${formatMoney(record.invoiceAmount)}</strong></div>
+                <div><span>Остаток</span><strong class="${record.outstandingAmount > 0 ? "warn" : ""}">${formatMoney(record.outstandingAmount)}</strong></div>
+                <div><span>Штраф</span><strong class="${record.totalPenalty > 0 ? "danger" : ""}">${formatMoney(record.totalPenalty)}</strong></div>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderMobileRegistryCards(records) {
+  if (!records.length) {
+    return '<div class="mobile-card-list is-mobile-only"><div class="empty-state">По этим фильтрам записей нет.</div></div>';
+  }
+
+  return `
+    <div class="mobile-card-list is-mobile-only">
+      ${records
+        .map(
+          (record) => `
+            <article class="mobile-record-card is-clickable ${state.selectedRecordId === record.id ? "is-active" : ""}" data-record-id="${record.id}">
+              <div class="mobile-card-head">
+                <strong>${record.company}</strong>
+                <span class="mobile-card-period">${record.periodMonth} ${record.periodYear || ""}</span>
+              </div>
+              <div class="mobile-card-subhead">${formatLocation(record)}</div>
+              <div class="mobile-card-note">${record.note || "Без примечания"}</div>
+              <div class="mobile-card-meta">
+                <span>Дедлайн</span>
+                <strong>${formatDate(record.dueDate)}</strong>
+              </div>
+              <div class="mobile-card-grid">
+                <div><span>Выставлено</span><strong>${formatMoney(record.invoiceAmount)}</strong></div>
+                <div><span>Оплачено</span><strong>${formatMoney(record.paidAmount)}</strong></div>
+                <div><span>Остаток</span><strong class="${record.outstandingAmount > 0 ? "warn" : ""}">${formatMoney(record.outstandingAmount)}</strong></div>
+                <div><span>Штраф</span><strong class="${record.totalPenalty > 0 ? "danger" : ""}">${formatMoney(record.totalPenalty)}</strong></div>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderMobilePaymentCards(record) {
+  if (!record || !record.payments.length) {
+    return '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Платежей по записи пока нет.</div></div>';
+  }
+
+  return `
+    <div class="mobile-card-list is-mobile-only">
+      ${record.payments
+        .map(
+          (payment) => `
+            <article class="mobile-record-card">
+              <div class="mobile-card-head">
+                <strong>${formatMoney(payment.amount)}</strong>
+                <span class="mobile-card-period">${formatPaymentDate(payment)}</span>
+              </div>
+              <div class="mobile-card-grid">
+                <div><span>Дней просрочки</span><strong class="${payment.lateDays > 0 ? "warn" : ""}">${number.format(payment.lateDays)}</strong></div>
+                <div><span>Штраф</span><strong class="${payment.penalty > 0 ? "danger" : ""}">${formatMoney(payment.penalty)}</strong></div>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderMobilePeriodCards(periods, records) {
+  if (!periods.length) {
+    return '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Пока нет ни одного периода.</div></div>';
+  }
+
+  return `
+    <div class="mobile-card-list is-mobile-only">
+      ${periods
+        .map((period) => {
+          const count = records.filter((record) => record.periodId === period.id).length;
+          const isEditing = state.editingPeriodId === period.id;
+          return `
+            <article class="mobile-record-card">
+              <div class="mobile-card-head">
+                <strong>${period.month} ${period.year}</strong>
+                <span class="mobile-card-period">${number.format(count)} записей</span>
+              </div>
+              <div class="mobile-card-meta">
+                <span>Дедлайн</span>
+                <strong>
+                  ${
+                    isEditing
+                      ? `<input class="search search-table" data-period-due-date-input="${period.id}" type="date" value="${state.editingPeriodDueDate || period.dueDate || ""}" />`
+                      : formatDate(period.dueDate)
+                  }
+                </strong>
+              </div>
+              <div class="table-actions" style="margin-top:12px;">
+                ${
+                  isEditing
+                    ? `
+                      <button class="button" data-save-period="${period.id}" type="button">Сохранить</button>
+                      <button class="button button-ghost" data-cancel-period-edit type="button">Отмена</button>
+                    `
+                    : `
+                      <button class="button button-ghost" data-edit-period="${period.id}" type="button">Изменить</button>
+                      <button class="button button-ghost" data-delete-period="${period.id}" type="button">Удалить</button>
+                    `
+                }
+              </div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderMobileWorkspacePaymentCards(selected) {
+  if (!selected?.payments.length) {
+    return '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Платежей у выбранной записи пока нет.</div></div>';
+  }
+
+  return `
+    <div class="mobile-card-list is-mobile-only">
+      ${selected.payments
+        .map(
+          (payment) => `
+            <article class="mobile-record-card">
+              <div class="mobile-card-head">
+                <strong>${formatMoney(payment.amount)}</strong>
+                <span class="mobile-card-period">${formatPaymentDate(payment)}</span>
+              </div>
+              <div class="mobile-card-subhead">${selected.company} • ${formatLocation(selected)}</div>
+              <div class="mobile-card-grid">
+                <div><span>Штраф</span><strong class="${payment.penalty > 0 ? "danger" : ""}">${formatMoney(payment.penalty)}</strong></div>
+              </div>
+              <div class="table-actions" style="margin-top:12px;">
+                <button class="button button-ghost" data-edit-payment="${payment.id}" type="button">Редактировать</button>
+                <button class="button button-ghost" data-delete-payment="${payment.id}" type="button">Удалить</button>
+              </div>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderOverviewDetail(records) {
   const target = document.getElementById("overview-detail");
   const company = state.selectedCompany || getCompanyOptions(records)[0] || "";
@@ -1540,6 +1777,8 @@ function renderOverviewDetail(records) {
   const monthOptions = MONTH_OPTIONS;
   const yearOptions = YEAR_OPTIONS;
   const paymentDateStatusOptions = PAYMENT_DATE_STATUS_OPTIONS;
+  const outstandingStatusOptions = OUTSTANDING_STATUS_OPTIONS;
+  const penaltyStatusOptions = PENALTY_STATUS_OPTIONS;
 
   const filtered = companyRecords
     .filter((record) => isMultiSelected(state.overviewFilters.cities, record.city))
@@ -1547,6 +1786,8 @@ function renderOverviewDetail(records) {
     .filter((record) => isMultiSelected(state.overviewFilters.months, record.periodMonth))
     .filter((record) => isMultiSelected(state.overviewFilters.years, record.periodYear))
     .filter((record) => matchesPaymentDateStatus(record, state.overviewFilters.paymentDateStatus))
+    .filter((record) => matchesOutstandingStatus(record, state.overviewFilters.outstandingStatus))
+    .filter((record) => matchesPenaltyStatus(record, state.overviewFilters.penaltyStatus))
     .map((record, index) => ({ record, index }))
     .sort((left, right) => {
       const yearCompare = compareWithDirection(Number(left.record.periodYear || 0), Number(right.record.periodYear || 0), state.overviewFilters.yearSort);
@@ -1627,12 +1868,33 @@ function renderOverviewDetail(records) {
             : ""
         }
       </div>
+      <div class="filter-group">
+        <button class="filter-trigger ${state.overviewOpenFilter === "outstandingStatus" ? "is-open" : ""}" data-overview-filter-toggle="outstandingStatus" type="button">
+          ${formatFilterSummary("Остаток", state.overviewFilters.outstandingStatus)}
+        </button>
+        ${
+          state.overviewOpenFilter === "outstandingStatus"
+            ? `<div class="filter-popover">${renderOverviewCheckboxOptions("outstandingStatus", outstandingStatusOptions, state.overviewFilters.outstandingStatus)}</div>`
+            : ""
+        }
+      </div>
+      <div class="filter-group">
+        <button class="filter-trigger ${state.overviewOpenFilter === "penaltyStatus" ? "is-open" : ""}" data-overview-filter-toggle="penaltyStatus" type="button">
+          ${formatFilterSummary("Штраф", state.overviewFilters.penaltyStatus)}
+        </button>
+        ${
+          state.overviewOpenFilter === "penaltyStatus"
+            ? `<div class="filter-popover">${renderOverviewCheckboxOptions("penaltyStatus", penaltyStatusOptions, state.overviewFilters.penaltyStatus)}</div>`
+            : ""
+        }
+      </div>
     </div>
   `;
 
   target.innerHTML = `
     ${renderFilterToolbar()}
-    <div class="table-wrap table-window">
+    ${renderMobileOverviewCards(filtered, emptyOverviewMessage)}
+    <div class="table-wrap table-window desktop-table-only">
       <table>
         <thead>
           <tr>
@@ -1689,6 +1951,8 @@ function renderRegistry(records) {
   const monthOptions = MONTH_OPTIONS;
   const yearOptions = YEAR_OPTIONS;
   const paymentDateStatusOptions = PAYMENT_DATE_STATUS_OPTIONS;
+  const outstandingStatusOptions = OUTSTANDING_STATUS_OPTIONS;
+  const penaltyStatusOptions = PENALTY_STATUS_OPTIONS;
 
   const filtered = records
     .filter((record) => isMultiSelected(state.registryFilters.companies, record.company))
@@ -1697,6 +1961,8 @@ function renderRegistry(records) {
     .filter((record) => isMultiSelected(state.registryFilters.months, record.periodMonth))
     .filter((record) => isMultiSelected(state.registryFilters.years, record.periodYear))
     .filter((record) => matchesPaymentDateStatus(record, state.registryFilters.paymentDateStatus))
+    .filter((record) => matchesOutstandingStatus(record, state.registryFilters.outstandingStatus))
+    .filter((record) => matchesPenaltyStatus(record, state.registryFilters.penaltyStatus))
     .map((record, index) => ({ record, index }))
     .sort((left, right) => {
       const yearCompare = compareWithDirection(
@@ -1785,12 +2051,33 @@ function renderRegistry(records) {
             : ""
         }
       </div>
+      <div class="filter-group">
+        <button class="filter-trigger ${state.registryOpenFilter === "outstandingStatus" ? "is-open" : ""}" data-registry-filter-toggle="outstandingStatus" type="button">
+          ${formatFilterSummary("Остаток", state.registryFilters.outstandingStatus)}
+        </button>
+        ${
+          state.registryOpenFilter === "outstandingStatus"
+            ? `<div class="filter-popover">${renderRegistryCheckboxOptions("outstandingStatus", outstandingStatusOptions, state.registryFilters.outstandingStatus)}</div>`
+            : ""
+        }
+      </div>
+      <div class="filter-group">
+        <button class="filter-trigger ${state.registryOpenFilter === "penaltyStatus" ? "is-open" : ""}" data-registry-filter-toggle="penaltyStatus" type="button">
+          ${formatFilterSummary("Штраф", state.registryFilters.penaltyStatus)}
+        </button>
+        ${
+          state.registryOpenFilter === "penaltyStatus"
+            ? `<div class="filter-popover">${renderRegistryCheckboxOptions("penaltyStatus", penaltyStatusOptions, state.registryFilters.penaltyStatus)}</div>`
+            : ""
+        }
+      </div>
     </div>
   `;
 
   target.innerHTML = `
     ${renderFilterToolbar()}
-    <div class="table-wrap table-window">
+    ${renderMobileRegistryCards(filtered)}
+    <div class="table-wrap table-window desktop-table-only">
       <table>
         <thead>
           <tr>
@@ -1876,6 +2163,8 @@ function renderRecordDetail(record) {
 
 function renderPayments(record) {
   const tbody = document.getElementById("payments-table");
+  const cardsTarget = document.getElementById("payments-mobile-cards");
+  cardsTarget.innerHTML = renderMobilePaymentCards(record);
   if (!record || !record.payments.length) {
     tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Платежей по записи пока нет.</td></tr>';
     return;
@@ -1897,6 +2186,8 @@ function renderPayments(record) {
 
 function renderPeriods(periods, records) {
   const tbody = document.getElementById("periods-table");
+  const cardsTarget = document.getElementById("periods-mobile-cards");
+  cardsTarget.innerHTML = renderMobilePeriodCards(periods, records);
 
   if (!periods.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Пока нет ни одного периода.</td></tr>';
@@ -2038,6 +2329,8 @@ function renderWorkspaceRecords(records) {
         </select>
       </div>
     `;
+    document.getElementById("workspace-payments-mobile-cards").innerHTML =
+      '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Записей пока нет.</div></div>';
     document.getElementById("workspace-payments-table").innerHTML =
       '<tr><td colspan="5" class="empty-state">Записей пока нет.</td></tr>';
     return;
@@ -2158,6 +2451,8 @@ function renderWorkspaceRecords(records) {
     : "Выберите запись и добавьте новый платеж.";
 
   const tbody = document.getElementById("workspace-payments-table");
+  const cardsTarget = document.getElementById("workspace-payments-mobile-cards");
+  cardsTarget.innerHTML = renderMobileWorkspacePaymentCards(selected);
   if (!selected?.payments.length) {
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Платежей у выбранной записи пока нет.</td></tr>';
     return;
@@ -2437,6 +2732,13 @@ async function main() {
     rerender();
   });
 
+  document.getElementById("company-mobile-cards").addEventListener("click", (event) => {
+    const card = event.target.closest("[data-company]");
+    if (!card) return;
+    state.selectedCompany = card.dataset.company;
+    rerender();
+  });
+
   document.getElementById("overview-detail").addEventListener("click", (event) => {
     const toggleButton = event.target.closest("[data-overview-filter-toggle]");
     if (toggleButton) {
@@ -2523,6 +2825,28 @@ async function main() {
       }
       state.overviewFilters.paymentDateStatus = [...values];
       rerender();
+      return;
+    }
+    if (event.target.dataset.overviewFilterCheck === "outstandingStatus") {
+      const values = new Set(state.overviewFilters.outstandingStatus);
+      if (event.target.checked) {
+        values.add(event.target.value);
+      } else {
+        values.delete(event.target.value);
+      }
+      state.overviewFilters.outstandingStatus = [...values];
+      rerender();
+      return;
+    }
+    if (event.target.dataset.overviewFilterCheck === "penaltyStatus") {
+      const values = new Set(state.overviewFilters.penaltyStatus);
+      if (event.target.checked) {
+        values.add(event.target.value);
+      } else {
+        values.delete(event.target.value);
+      }
+      state.overviewFilters.penaltyStatus = [...values];
+      rerender();
     }
   });
 
@@ -2533,6 +2857,8 @@ async function main() {
       months: [],
       years: [],
       paymentDateStatus: [],
+      outstandingStatus: [],
+      penaltyStatus: [],
       monthSort: "none",
       yearSort: "none",
     };
@@ -2609,6 +2935,8 @@ async function main() {
       months: [],
       years: [],
       paymentDateStatus: [],
+      outstandingStatus: [],
+      penaltyStatus: [],
       monthSort: "none",
       yearSort: "none",
     };
@@ -2819,7 +3147,47 @@ async function main() {
     await handleDeletePeriod(button.dataset.deletePeriod);
   });
 
+  document.getElementById("periods-mobile-cards").addEventListener("click", async (event) => {
+    const editButton = event.target.closest("[data-edit-period]");
+    if (editButton) {
+      const period = state.data.periods.find((item) => item.id === editButton.dataset.editPeriod);
+      if (!period) {
+        return;
+      }
+      state.editingPeriodId = period.id;
+      state.editingPeriodDueDate = period.dueDate || "";
+      rerender();
+      return;
+    }
+
+    const saveButton = event.target.closest("[data-save-period]");
+    if (saveButton) {
+      await handleSavePeriodDueDate(saveButton.dataset.savePeriod);
+      return;
+    }
+
+    const cancelButton = event.target.closest("[data-cancel-period-edit]");
+    if (cancelButton) {
+      state.editingPeriodId = null;
+      state.editingPeriodDueDate = "";
+      rerender();
+      return;
+    }
+
+    const deleteButton = event.target.closest("[data-delete-period]");
+    if (!deleteButton) return;
+    await handleDeletePeriod(deleteButton.dataset.deletePeriod);
+  });
+
   document.getElementById("periods-table").addEventListener("input", (event) => {
+    const input = event.target.closest("[data-period-due-date-input]");
+    if (!input) {
+      return;
+    }
+    state.editingPeriodDueDate = input.value;
+  });
+
+  document.getElementById("periods-mobile-cards").addEventListener("input", (event) => {
     const input = event.target.closest("[data-period-due-date-input]");
     if (!input) {
       return;
@@ -2891,6 +3259,17 @@ async function main() {
   });
 
   document.getElementById("workspace-payments-table").addEventListener("click", async (event) => {
+    const editButton = event.target.closest("[data-edit-payment]");
+    if (editButton) {
+      handleStartPaymentEdit(editButton.dataset.editPayment);
+      return;
+    }
+    const button = event.target.closest("[data-delete-payment]");
+    if (!button) return;
+    await handleDeletePayment(button.dataset.deletePayment);
+  });
+
+  document.getElementById("workspace-payments-mobile-cards").addEventListener("click", async (event) => {
     const editButton = event.target.closest("[data-edit-payment]");
     if (editButton) {
       handleStartPaymentEdit(editButton.dataset.editPayment);
