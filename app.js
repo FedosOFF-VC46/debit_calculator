@@ -39,6 +39,8 @@ const state = {
   isXlsxGuideOpen: false,
   overviewPeriodFrom: "",
   overviewPeriodTo: "",
+  showOverviewCards: true,
+  showOverviewTable: false,
   overviewOpenFilter: null,
   overviewFilters: {
     cities: [],
@@ -1564,6 +1566,37 @@ function renderOverviewModal(record) {
     return;
   }
 
+  const paymentsContent = record.payments.length
+    ? `
+      <div class="table-wrap modal-table-wrap desktop-table-only">
+        <table>
+          <thead>
+            <tr>
+              <th>Сумма</th>
+              <th>Дата</th>
+              <th>Дней просрочки</th>
+              <th>Штраф</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${record.payments
+              .map(
+                (payment) => `
+                  <tr>
+                    <td>${formatMoney(payment.amount)}</td>
+                    <td class="${payment.isDateUnknown ? "warn" : ""}">${formatPaymentDate(payment)}</td>
+                    <td class="${payment.lateDays > 0 ? "warn" : ""}">${number.format(payment.lateDays)}</td>
+                    <td class="${payment.penalty > 0 ? "danger" : ""}">${formatMoney(payment.penalty)}</td>
+                  </tr>
+                `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `
+    : '<div class="empty-state">Платежей по записи пока нет.</div>';
+
   content.innerHTML = `
     <div class="detail-list">
       <article class="detail-item"><span>Компания</span><strong>${record.company}</strong></article>
@@ -1576,6 +1609,15 @@ function renderOverviewModal(record) {
       <article class="detail-item"><span>Общая сумма к оплате</span><strong>${formatMoney(record.invoiceAmount)}</strong></article>
       <article class="detail-item"><span>Оплачено</span><strong>${formatMoney(record.paidAmount)}</strong></article>
       <article class="detail-item"><span>Остаток / штраф</span><strong>${formatMoney(record.outstandingAmount)} / ${formatMoney(record.totalPenalty)}</strong></article>
+    </div>
+    <div class="modal-section">
+      <div class="panel-head panel-head-compact">
+        <div>
+          <p class="eyebrow">Платежи</p>
+          <h2>Оплаты по записи</h2>
+        </div>
+      </div>
+      ${paymentsContent}
     </div>
   `;
   modal.classList.add("is-open");
@@ -1606,7 +1648,7 @@ function renderSummary(summary) {
 
 function renderCompanyTable(records) {
   const tbody = document.getElementById("company-table");
-  const mobileCards = document.getElementById("company-mobile-cards");
+  const tableWrap = document.getElementById("company-table-wrap");
   const periodFiltersTarget = document.getElementById("company-period-filters");
   const periodOptions = getPeriodRangeOptions(getDerived().records);
 
@@ -1645,33 +1687,10 @@ function renderCompanyTable(records) {
   });
 
   if (!companies.length) {
-    mobileCards.innerHTML = '<div class="mobile-card-list is-mobile-only"><div class="empty-state">Пока нет данных по компаниям.</div></div>';
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Пока нет данных по компаниям.</td></tr>';
+    tableWrap.classList.remove("overview-section-hidden");
     return;
   }
-
-  mobileCards.innerHTML = `
-    <div class="mobile-card-list mobile-card-list-compact is-mobile-only">
-      ${companies
-        .map(
-          (company) => `
-            <article class="mobile-record-card is-clickable ${state.selectedCompany === company.company ? "is-active" : ""}" data-company="${company.company}">
-              <div class="mobile-card-head">
-                <strong>${company.company}</strong>
-                <span class="mobile-card-period">${number.format(company.count)} записей</span>
-              </div>
-              <div class="mobile-card-grid">
-                <div><span>Выставлено</span><strong>${formatMoney(company.invoiceAmount)}</strong></div>
-                <div><span>Оплачено</span><strong>${formatMoney(company.paidAmount)}</strong></div>
-                <div><span>Остаток</span><strong class="${company.outstandingAmount > 0 ? "warn" : ""}">${formatMoney(company.outstandingAmount)}</strong></div>
-                <div><span>Штраф</span><strong class="${company.totalPenalty > 0 ? "danger" : ""}">${formatMoney(company.totalPenalty)}</strong></div>
-              </div>
-            </article>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
 
   tbody.innerHTML = companies
     .map(
@@ -1687,6 +1706,7 @@ function renderCompanyTable(records) {
       `,
     )
     .join("");
+  tableWrap.classList.remove("overview-section-hidden");
 }
 
 function renderMobileOverviewCards(records, emptyMessage) {
@@ -1989,8 +2009,10 @@ function renderOverviewDetail(records) {
 
   target.innerHTML = `
     ${renderFilterToolbar()}
-    ${renderMobileOverviewCards(filtered, emptyOverviewMessage)}
-    <div class="table-wrap table-window desktop-table-only">
+    <div class="${state.showOverviewCards ? "" : "overview-section-hidden"}">
+      ${renderMobileOverviewCards(filtered, emptyOverviewMessage).replaceAll("is-mobile-only", "")}
+    </div>
+    <div class="table-wrap table-window desktop-table-only ${state.showOverviewTable ? "" : "overview-section-hidden"}">
       <table>
         <thead>
           <tr>
@@ -2037,6 +2059,20 @@ function renderOverviewDetail(records) {
       </table>
     </div>
   `;
+}
+
+function renderOverviewViewToggles() {
+  const overviewCardsButton = document.getElementById("toggle-overview-cards");
+  const overviewTableButton = document.getElementById("toggle-overview-table");
+
+  if (overviewCardsButton) {
+    overviewCardsButton.textContent = state.showOverviewCards ? "Скрыть карточки" : "Показать карточки";
+    overviewCardsButton.classList.toggle("is-active", state.showOverviewCards);
+  }
+  if (overviewTableButton) {
+    overviewTableButton.textContent = state.showOverviewTable ? "Скрыть таблицу" : "Показать таблицу";
+    overviewTableButton.classList.toggle("is-active", state.showOverviewTable);
+  }
 }
 
 function renderRegistry(records) {
@@ -2584,13 +2620,13 @@ function rerender() {
   renderTabs();
   renderSummary(derived.summary);
   renderCompanyTable(overviewRecords);
+  renderOverviewViewToggles();
 
   if (!state.selectedCompany || !overviewCompanies.some((company) => company.company === state.selectedCompany)) {
     state.selectedCompany = overviewCompanies[0]?.company || null;
   }
   renderOverviewDetail(overviewRecords);
   renderOverviewModal(overviewRecords.find((record) => record.id === state.selectedRecordId));
-  renderRegistry(derived.records);
   renderPeriods(derived.periods, state.data.records);
   renderWorkspaceRecords(derived.records);
   renderWorkspaceSettings();
@@ -2830,10 +2866,13 @@ async function main() {
     rerender();
   });
 
-  document.getElementById("company-mobile-cards").addEventListener("click", (event) => {
-    const card = event.target.closest("[data-company]");
-    if (!card) return;
-    state.selectedCompany = card.dataset.company;
+  document.getElementById("toggle-overview-cards").addEventListener("click", () => {
+    state.showOverviewCards = !state.showOverviewCards;
+    rerender();
+  });
+
+  document.getElementById("toggle-overview-table").addEventListener("click", () => {
+    state.showOverviewTable = !state.showOverviewTable;
     rerender();
   });
 

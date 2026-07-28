@@ -300,6 +300,12 @@ h2 {
   box-shadow: none;
 }
 
+.button-ghost.is-active {
+  color: var(--text);
+  border-style: solid;
+  background: rgba(15, 118, 110, 0.08);
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
@@ -316,16 +322,23 @@ h2 {
   display: none;
 }
 
-#company-mobile-cards,
 #payments-mobile-cards,
 #periods-mobile-cards,
 #workspace-payments-mobile-cards {
   display: none;
 }
 
+#company-mobile-cards {
+  display: block;
+}
+
 .table-window {
   max-height: 640px;
   overflow-y: auto;
+}
+
+.overview-section-hidden {
+  display: none !important;
 }
 
 table {
@@ -615,6 +628,14 @@ tbody tr.is-active {
 
 .modal-window-wide {
   width: min(1180px, 100%);
+}
+
+.modal-section {
+  margin-top: 18px;
+}
+
+.panel-head-compact {
+  margin-bottom: 12px;
 }
 
 .toast-stack {
