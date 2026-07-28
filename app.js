@@ -34,6 +34,8 @@ const state = {
   editingPaymentAmount: "",
   isPeriodEditModalOpen: false,
   isPaymentEditModalOpen: false,
+  isRecordAmountModalOpen: false,
+  editingRecordAmount: "",
   recordFormCompany: "",
   recordFormCity: "",
   recordFormStreet: "",
@@ -1693,6 +1695,35 @@ function renderPaymentEditModal(record) {
   modal.classList.add("is-open");
 }
 
+function renderRecordAmountModal(record) {
+  const modal = document.getElementById("record-amount-modal");
+  const content = document.getElementById("record-amount-modal-content");
+
+  if (!state.isRecordAmountModalOpen || !record) {
+    modal.classList.remove("is-open");
+    content.innerHTML = "";
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="preview-notes">
+      <div class="preview-note">Запись: <strong>${record.company} • ${formatLocation(record)} • ${record.periodLabel}</strong></div>
+      <div class="preview-note">Уже оплачено: <strong>${formatMoney(record.paidAmount)}</strong></div>
+      <div class="preview-note">Текущая общая сумма: <strong>${formatMoney(record.invoiceAmount)}</strong></div>
+    </div>
+    <label class="field">
+      <span>Новая общая сумма к оплате</span>
+      <input id="record-amount-input" class="search" type="number" step="0.01" min="0" value="${state.editingRecordAmount || ""}" />
+    </label>
+    <small class="field-hint">Новая сумма не может быть меньше уже оплаченной суммы по этой записи.</small>
+    <div class="field-actions modal-actions">
+      <button id="save-record-amount-modal" class="button" type="button">Сохранить сумму</button>
+      <button id="cancel-record-amount-modal" class="button button-ghost" type="button">Отмена</button>
+    </div>
+  `;
+  modal.classList.add("is-open");
+}
+
 function renderSummary(summary) {
   const cards = [
     ["Периодов", number.format(summary.periods)],
@@ -2665,6 +2696,7 @@ function rerender() {
   renderOverviewModal(overviewRecords.find((record) => record.id === state.selectedRecordId));
   renderPeriodEditModal(editingPeriod);
   renderPaymentEditModal(selectedWorkspaceRecord);
+  renderRecordAmountModal(selectedWorkspaceRecord);
   renderPeriods(derived.periods, state.data.records);
   renderWorkspaceRecords(derived.records);
   renderWorkspaceSettings();
@@ -2683,6 +2715,11 @@ function resetPaymentForm() {
   state.isPaymentEditModalOpen = false;
   document.getElementById("payment-date").value = "";
   document.getElementById("payment-amount").value = "";
+}
+
+function resetRecordAmountForm() {
+  state.isRecordAmountModalOpen = false;
+  state.editingRecordAmount = "";
 }
 
 function validatePaymentForm(record, date, amount) {
@@ -2821,6 +2858,7 @@ async function handleDeleteRecord() {
   state.data.records = state.data.records.filter((record) => record.id !== state.selectedRecordId);
   state.selectedRecordId = null;
   resetPaymentForm();
+  resetRecordAmountForm();
   await saveData();
   rerender();
 }
@@ -2912,6 +2950,39 @@ async function handleSavePaymentEditModal() {
   await saveData();
   resetPaymentForm();
   showToast("Оплата обновлена", `${formatMoney(amount)} от ${formatDate(date)} сохранены.`);
+  rerender();
+}
+
+function handleStartRecordAmountEdit() {
+  const record = getDerived().records.find((item) => item.id === state.selectedRecordId);
+  if (!record) {
+    return;
+  }
+  state.editingRecordAmount = String(record.invoiceAmount ?? "");
+  state.isRecordAmountModalOpen = true;
+  rerender();
+}
+
+async function handleSaveRecordAmountEdit() {
+  const rawRecord = getSelectedRecord();
+  const derivedRecord = getDerived().records.find((item) => item.id === state.selectedRecordId);
+  const nextAmount = toNumber(document.getElementById("record-amount-input")?.value);
+  if (!rawRecord || !derivedRecord || !Number.isFinite(nextAmount)) {
+    return;
+  }
+  const normalizedAmount = Number(nextAmount.toFixed(2));
+  if (normalizedAmount < derivedRecord.paidAmount) {
+    showToast(
+      "Сумма слишком мала",
+      `Новая общая сумма не может быть меньше уже оплаченных ${formatMoney(derivedRecord.paidAmount)}.`,
+    );
+    return;
+  }
+
+  rawRecord.invoiceAmount = normalizedAmount;
+  await saveData();
+  resetRecordAmountForm();
+  showToast("Сумма обновлена", `Новая общая сумма: ${formatMoney(normalizedAmount)}.`);
   rerender();
 }
 
@@ -3263,6 +3334,9 @@ async function main() {
     document.getElementById("settings-as-of-date").value = getTodayIso();
   });
   document.getElementById("delete-record").addEventListener("click", handleDeleteRecord);
+  document.getElementById("edit-record-amount").addEventListener("click", () => {
+    handleStartRecordAmountEdit();
+  });
   document.getElementById("toggle-new-company").addEventListener("click", () => {
     state.isAddingNewCompany = !state.isAddingNewCompany;
     if (!state.isAddingNewCompany) {
@@ -3497,6 +3571,28 @@ async function main() {
 
   document.getElementById("close-payment-edit-modal").addEventListener("click", () => {
     resetPaymentForm();
+    rerender();
+  });
+
+  document.getElementById("record-amount-modal-content").addEventListener("input", (event) => {
+    if (event.target.id === "record-amount-input") {
+      state.editingRecordAmount = event.target.value;
+    }
+  });
+
+  document.getElementById("record-amount-modal-content").addEventListener("click", async (event) => {
+    if (event.target.id === "save-record-amount-modal") {
+      await handleSaveRecordAmountEdit();
+      return;
+    }
+    if (event.target.id === "cancel-record-amount-modal") {
+      resetRecordAmountForm();
+      rerender();
+    }
+  });
+
+  document.getElementById("close-record-amount-modal").addEventListener("click", () => {
+    resetRecordAmountForm();
     rerender();
   });
 

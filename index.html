@@ -343,6 +343,7 @@
             <div class="field field-actions">
               <span>Действие</span>
               <button id="add-payment" class="button" type="button">Добавить оплату</button>
+              <button id="edit-record-amount" class="button button-secondary" type="button">Изменить общую сумму</button>
               <button id="cancel-payment-edit" class="button button-ghost is-hidden" type="button">Отмена</button>
               <small id="payment-mode-hint" class="field-hint">Выберите запись и добавьте новый платеж.</small>
             </div>
@@ -402,6 +403,19 @@
             <button id="close-payment-edit-modal" class="button button-ghost" type="button">Закрыть</button>
           </div>
           <div id="payment-edit-modal-content"></div>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" id="record-amount-modal">
+        <div class="modal-window">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Запись</p>
+              <h2>Изменить общую сумму</h2>
+            </div>
+            <button id="close-record-amount-modal" class="button button-ghost" type="button">Закрыть</button>
+          </div>
+          <div id="record-amount-modal-content"></div>
         </div>
       </div>
 
