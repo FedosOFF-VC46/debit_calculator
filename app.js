@@ -30,6 +30,10 @@ const state = {
   editingPeriodId: null,
   editingPeriodDueDate: "",
   editingPaymentId: null,
+  editingPaymentDate: "",
+  editingPaymentAmount: "",
+  isPeriodEditModalOpen: false,
+  isPaymentEditModalOpen: false,
   recordFormCompany: "",
   recordFormCity: "",
   recordFormStreet: "",
@@ -1568,7 +1572,7 @@ function renderOverviewModal(record) {
 
   const paymentsContent = record.payments.length
     ? `
-      <div class="table-wrap modal-table-wrap desktop-table-only">
+      <div class="table-wrap modal-table-wrap">
         <table>
           <thead>
             <tr>
@@ -1618,6 +1622,72 @@ function renderOverviewModal(record) {
         </div>
       </div>
       ${paymentsContent}
+    </div>
+  `;
+  modal.classList.add("is-open");
+}
+
+function renderPeriodEditModal(period) {
+  const modal = document.getElementById("period-edit-modal");
+  const content = document.getElementById("period-edit-modal-content");
+
+  if (!state.isPeriodEditModalOpen || !period) {
+    modal.classList.remove("is-open");
+    content.innerHTML = "";
+    return;
+  }
+
+  const count = state.data.records.filter((record) => record.periodId === period.id).length;
+
+  content.innerHTML = `
+    <div class="preview-notes">
+      <div class="preview-note">Период: <strong>${period.month} ${period.year}</strong></div>
+      <div class="preview-note">Записей в периоде: <strong>${number.format(count)}</strong></div>
+    </div>
+    <label class="field">
+      <span>Дедлайн</span>
+      <input id="period-edit-date" class="search" type="date" value="${state.editingPeriodDueDate || period.dueDate || ""}" />
+    </label>
+    <div class="field-actions modal-actions">
+      <button id="save-period-edit-modal" class="button" type="button">Сохранить</button>
+      <button id="cancel-period-edit-modal" class="button button-ghost" type="button">Отмена</button>
+    </div>
+  `;
+  modal.classList.add("is-open");
+}
+
+function renderPaymentEditModal(record) {
+  const modal = document.getElementById("payment-edit-modal");
+  const content = document.getElementById("payment-edit-modal-content");
+  const payment = record?.payments.find((item) => item.id === state.editingPaymentId) || null;
+
+  if (!state.isPaymentEditModalOpen || !record || !payment) {
+    modal.classList.remove("is-open");
+    content.innerHTML = "";
+    return;
+  }
+
+  const period = state.data.periods.find((item) => item.id === record.periodId) || null;
+  const minPaymentDate = getPeriodStartIso(period);
+  const maxPaymentDate = getTodayIso();
+
+  content.innerHTML = `
+    <div class="preview-notes">
+      <div class="preview-note">Запись: <strong>${record.company} • ${formatLocation(record)} • ${record.periodLabel}</strong></div>
+    </div>
+    <div class="form-grid form-grid-single-mobile">
+      <label class="field">
+        <span>Дата оплаты</span>
+        <input id="payment-edit-date" class="search" type="date" min="${minPaymentDate || ""}" max="${maxPaymentDate}" value="${state.editingPaymentDate || ""}" />
+      </label>
+      <label class="field">
+        <span>Сумма оплаты</span>
+        <input id="payment-edit-amount" class="search" type="number" step="0.01" min="0" value="${state.editingPaymentAmount || ""}" />
+      </label>
+    </div>
+    <div class="field-actions modal-actions">
+      <button id="save-payment-edit-modal" class="button" type="button">Сохранить изменения</button>
+      <button id="cancel-payment-edit-modal" class="button button-ghost" type="button">Отмена</button>
     </div>
   `;
   modal.classList.add("is-open");
@@ -1814,35 +1884,19 @@ function renderMobilePeriodCards(periods, records) {
       ${periods
         .map((period) => {
           const count = records.filter((record) => record.periodId === period.id).length;
-          const isEditing = state.editingPeriodId === period.id;
           return `
-            <article class="mobile-record-card">
+            <article class="mobile-record-card mobile-period-card">
               <div class="mobile-card-head">
                 <strong>${period.month} ${period.year}</strong>
                 <span class="mobile-card-period">${number.format(count)} записей</span>
               </div>
               <div class="mobile-card-meta">
                 <span>Дедлайн</span>
-                <strong>
-                  ${
-                    isEditing
-                      ? `<input class="search search-table" data-period-due-date-input="${period.id}" type="date" value="${state.editingPeriodDueDate || period.dueDate || ""}" />`
-                      : formatDate(period.dueDate)
-                  }
-                </strong>
+                <strong>${formatDate(period.dueDate)}</strong>
               </div>
-              <div class="table-actions" style="margin-top:12px;">
-                ${
-                  isEditing
-                    ? `
-                      <button class="button" data-save-period="${period.id}" type="button">Сохранить</button>
-                      <button class="button button-ghost" data-cancel-period-edit type="button">Отмена</button>
-                    `
-                    : `
-                      <button class="button button-ghost" data-edit-period="${period.id}" type="button">Изменить</button>
-                      <button class="button button-ghost" data-delete-period="${period.id}" type="button">Удалить</button>
-                    `
-                }
+              <div class="table-actions mobile-period-actions">
+                <button class="button button-ghost" data-edit-period="${period.id}" type="button">Изменить</button>
+                <button class="button button-ghost" data-delete-period="${period.id}" type="button">Удалить</button>
               </div>
             </article>
           `;
@@ -2329,35 +2383,17 @@ function renderPeriods(periods, records) {
   tbody.innerHTML = periods
     .map((period) => {
       const count = records.filter((record) => record.periodId === period.id).length;
-      const isEditing = state.editingPeriodId === period.id;
       return `
         <tr>
           <td>${period.month}</td>
           <td>${period.year}</td>
-          <td>
-            ${
-              isEditing
-                ? `<input class="search search-table" data-period-due-date-input="${period.id}" type="date" value="${state.editingPeriodDueDate || period.dueDate || ""}" />`
-                : formatDate(period.dueDate)
-            }
-          </td>
+          <td>${formatDate(period.dueDate)}</td>
           <td>${number.format(count)}</td>
           <td>
-            ${
-              isEditing
-                ? `
-                  <div class="table-actions">
-                    <button class="button" data-save-period="${period.id}" type="button">Сохранить</button>
-                    <button class="button button-ghost" data-cancel-period-edit type="button">Отмена</button>
-                  </div>
-                `
-                : `
-                  <div class="table-actions">
-                    <button class="button button-ghost" data-edit-period="${period.id}" type="button">Изменить</button>
-                    <button class="button button-ghost" data-delete-period="${period.id}" type="button">Удалить</button>
-                  </div>
-                `
-            }
+            <div class="table-actions">
+              <button class="button button-ghost" data-edit-period="${period.id}" type="button">Изменить</button>
+              <button class="button button-ghost" data-delete-period="${period.id}" type="button">Удалить</button>
+            </div>
           </td>
         </tr>
       `;
@@ -2575,12 +2611,10 @@ function renderWorkspaceRecords(records) {
   paymentDateInput.disabled = !selected;
   paymentAmountInput.disabled = !selected;
   paymentSubmitButton.disabled = !selected;
-  paymentSubmitButton.textContent = state.editingPaymentId ? "Сохранить изменения" : "Добавить оплату";
-  paymentCancelButton.classList.toggle("is-hidden", !state.editingPaymentId);
-  paymentCancelButton.disabled = !state.editingPaymentId;
-  paymentModeHint.textContent = state.editingPaymentId
-    ? "Редактирование платежа: измените дату или сумму и сохраните изменения."
-    : "Выберите запись и добавьте новый платеж.";
+  paymentSubmitButton.textContent = "Добавить оплату";
+  paymentCancelButton.classList.add("is-hidden");
+  paymentCancelButton.disabled = true;
+  paymentModeHint.textContent = "Выберите запись и добавьте новый платеж.";
 
   const tbody = document.getElementById("workspace-payments-table");
   const cardsTarget = document.getElementById("workspace-payments-mobile-cards");
@@ -2615,6 +2649,8 @@ function rerender() {
   const derived = getDerived();
   const overviewRecords = getOverviewScopedRecords(derived.records);
   const overviewCompanies = getCompanyOptions(overviewRecords).map((company) => ({ company }));
+  const selectedWorkspaceRecord = derived.records.find((record) => record.id === state.selectedRecordId) || null;
+  const editingPeriod = state.data.periods.find((period) => period.id === state.editingPeriodId) || null;
 
   setText("as-of-date", formatDate(state.data.settings.asOfDate));
   renderTabs();
@@ -2627,6 +2663,8 @@ function rerender() {
   }
   renderOverviewDetail(overviewRecords);
   renderOverviewModal(overviewRecords.find((record) => record.id === state.selectedRecordId));
+  renderPeriodEditModal(editingPeriod);
+  renderPaymentEditModal(selectedWorkspaceRecord);
   renderPeriods(derived.periods, state.data.records);
   renderWorkspaceRecords(derived.records);
   renderWorkspaceSettings();
@@ -2640,6 +2678,9 @@ function getSelectedRecord() {
 
 function resetPaymentForm() {
   state.editingPaymentId = null;
+  state.editingPaymentDate = "";
+  state.editingPaymentAmount = "";
+  state.isPaymentEditModalOpen = false;
   document.getElementById("payment-date").value = "";
   document.getElementById("payment-amount").value = "";
 }
@@ -2751,21 +2792,6 @@ async function handleAddPayment() {
     return;
   }
 
-  if (state.editingPaymentId) {
-    const payment = record.payments.find((item) => item.id === state.editingPaymentId);
-    if (!payment) {
-      return;
-    }
-    payment.date = date;
-    payment.amount = Number(amount.toFixed(2));
-    delete payment.dateUnknown;
-    await saveData();
-    resetPaymentForm();
-    showToast("Оплата обновлена", `${formatMoney(amount)} от ${formatDate(date)} сохранены.`);
-    rerender();
-    return;
-  }
-
   record.payments.push({
     id: createId("payment"),
     date,
@@ -2805,6 +2831,11 @@ async function handleDeletePeriod(periodId) {
   if (state.data.records.every((record) => record.id !== state.selectedRecordId)) {
     state.selectedRecordId = null;
   }
+  if (state.editingPeriodId === periodId) {
+    state.editingPeriodId = null;
+    state.editingPeriodDueDate = "";
+    state.isPeriodEditModalOpen = false;
+  }
   await saveData();
   rerender();
 }
@@ -2820,6 +2851,7 @@ async function handleSavePeriodDueDate(periodId) {
   showToast("Дедлайн обновлен", `Для периода ${period.month} ${period.year} сохранена дата ${formatDate(period.dueDate)}.`);
   state.editingPeriodId = null;
   state.editingPeriodDueDate = "";
+  state.isPeriodEditModalOpen = false;
   rerender();
 }
 
@@ -2844,8 +2876,42 @@ function handleStartPaymentEdit(paymentId) {
   }
 
   state.editingPaymentId = payment.id;
-  document.getElementById("payment-date").value = payment.dateUnknown ? "" : payment.date || "";
-  document.getElementById("payment-amount").value = String(payment.amount ?? "");
+  state.editingPaymentDate = payment.dateUnknown ? "" : payment.date || "";
+  state.editingPaymentAmount = String(payment.amount ?? "");
+  state.isPaymentEditModalOpen = true;
+  rerender();
+}
+
+function handleStartPeriodEdit(periodId) {
+  const period = state.data.periods.find((item) => item.id === periodId);
+  if (!period) {
+    return;
+  }
+  state.editingPeriodId = period.id;
+  state.editingPeriodDueDate = period.dueDate || "";
+  state.isPeriodEditModalOpen = true;
+  rerender();
+}
+
+async function handleSavePaymentEditModal() {
+  const record = getSelectedRecord();
+  const payment = record?.payments.find((item) => item.id === state.editingPaymentId);
+  if (!record || !payment) {
+    return;
+  }
+
+  const date = document.getElementById("payment-edit-date")?.value || "";
+  const amount = toNumber(document.getElementById("payment-edit-amount")?.value);
+  if (!validatePaymentForm(record, date, amount)) {
+    return;
+  }
+
+  payment.date = date;
+  payment.amount = Number(amount.toFixed(2));
+  delete payment.dateUnknown;
+  await saveData();
+  resetPaymentForm();
+  showToast("Оплата обновлена", `${formatMoney(amount)} от ${formatDate(date)} сохранены.`);
   rerender();
 }
 
@@ -3276,27 +3342,7 @@ async function main() {
   document.getElementById("periods-table").addEventListener("click", async (event) => {
     const editButton = event.target.closest("[data-edit-period]");
     if (editButton) {
-      const period = state.data.periods.find((item) => item.id === editButton.dataset.editPeriod);
-      if (!period) {
-        return;
-      }
-      state.editingPeriodId = period.id;
-      state.editingPeriodDueDate = period.dueDate || "";
-      rerender();
-      return;
-    }
-
-    const saveButton = event.target.closest("[data-save-period]");
-    if (saveButton) {
-      await handleSavePeriodDueDate(saveButton.dataset.savePeriod);
-      return;
-    }
-
-    const cancelButton = event.target.closest("[data-cancel-period-edit]");
-    if (cancelButton) {
-      state.editingPeriodId = null;
-      state.editingPeriodDueDate = "";
-      rerender();
+      handleStartPeriodEdit(editButton.dataset.editPeriod);
       return;
     }
 
@@ -3308,49 +3354,13 @@ async function main() {
   document.getElementById("periods-mobile-cards").addEventListener("click", async (event) => {
     const editButton = event.target.closest("[data-edit-period]");
     if (editButton) {
-      const period = state.data.periods.find((item) => item.id === editButton.dataset.editPeriod);
-      if (!period) {
-        return;
-      }
-      state.editingPeriodId = period.id;
-      state.editingPeriodDueDate = period.dueDate || "";
-      rerender();
-      return;
-    }
-
-    const saveButton = event.target.closest("[data-save-period]");
-    if (saveButton) {
-      await handleSavePeriodDueDate(saveButton.dataset.savePeriod);
-      return;
-    }
-
-    const cancelButton = event.target.closest("[data-cancel-period-edit]");
-    if (cancelButton) {
-      state.editingPeriodId = null;
-      state.editingPeriodDueDate = "";
-      rerender();
+      handleStartPeriodEdit(editButton.dataset.editPeriod);
       return;
     }
 
     const deleteButton = event.target.closest("[data-delete-period]");
     if (!deleteButton) return;
     await handleDeletePeriod(deleteButton.dataset.deletePeriod);
-  });
-
-  document.getElementById("periods-table").addEventListener("input", (event) => {
-    const input = event.target.closest("[data-period-due-date-input]");
-    if (!input) {
-      return;
-    }
-    state.editingPeriodDueDate = input.value;
-  });
-
-  document.getElementById("periods-mobile-cards").addEventListener("input", (event) => {
-    const input = event.target.closest("[data-period-due-date-input]");
-    if (!input) {
-      return;
-    }
-    state.editingPeriodDueDate = input.value;
   });
 
   document.getElementById("workspace-record-filters").addEventListener("click", (event) => {
@@ -3436,6 +3446,58 @@ async function main() {
     const button = event.target.closest("[data-delete-payment]");
     if (!button) return;
     await handleDeletePayment(button.dataset.deletePayment);
+  });
+
+  document.getElementById("period-edit-modal-content").addEventListener("input", (event) => {
+    if (event.target.id === "period-edit-date") {
+      state.editingPeriodDueDate = event.target.value;
+    }
+  });
+
+  document.getElementById("period-edit-modal-content").addEventListener("click", async (event) => {
+    if (event.target.id === "save-period-edit-modal") {
+      await handleSavePeriodDueDate(state.editingPeriodId);
+      return;
+    }
+    if (event.target.id === "cancel-period-edit-modal") {
+      state.editingPeriodId = null;
+      state.editingPeriodDueDate = "";
+      state.isPeriodEditModalOpen = false;
+      rerender();
+    }
+  });
+
+  document.getElementById("payment-edit-modal-content").addEventListener("input", (event) => {
+    if (event.target.id === "payment-edit-date") {
+      state.editingPaymentDate = event.target.value;
+      return;
+    }
+    if (event.target.id === "payment-edit-amount") {
+      state.editingPaymentAmount = event.target.value;
+    }
+  });
+
+  document.getElementById("payment-edit-modal-content").addEventListener("click", async (event) => {
+    if (event.target.id === "save-payment-edit-modal") {
+      await handleSavePaymentEditModal();
+      return;
+    }
+    if (event.target.id === "cancel-payment-edit-modal") {
+      resetPaymentForm();
+      rerender();
+    }
+  });
+
+  document.getElementById("close-period-edit-modal").addEventListener("click", () => {
+    state.editingPeriodId = null;
+    state.editingPeriodDueDate = "";
+    state.isPeriodEditModalOpen = false;
+    rerender();
+  });
+
+  document.getElementById("close-payment-edit-modal").addEventListener("click", () => {
+    resetPaymentForm();
+    rerender();
   });
 
   document.getElementById("xlsx-import-content").addEventListener("click", async (event) => {

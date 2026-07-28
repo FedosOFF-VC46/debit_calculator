@@ -341,6 +341,10 @@ h2 {
   display: none !important;
 }
 
+.modal-table-wrap table {
+  min-width: 520px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -478,6 +482,20 @@ th {
   overflow-wrap: anywhere;
   word-break: break-word;
   font-variant-numeric: tabular-nums;
+}
+
+.mobile-period-card {
+  padding: 10px 12px;
+}
+
+.mobile-period-actions {
+  margin-top: 10px;
+}
+
+#periods-mobile-cards {
+  max-height: 420px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .small-note {
@@ -636,6 +654,10 @@ tbody tr.is-active {
 
 .panel-head-compact {
   margin-bottom: 12px;
+}
+
+.modal-actions {
+  margin-top: 14px;
 }
 
 .toast-stack {
@@ -899,8 +921,7 @@ tbody tr.is-active {
     right: 10px;
     bottom: max(10px, env(safe-area-inset-bottom));
     z-index: 70;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
     gap: 8px;
     margin-top: 0;
     padding: 8px;
@@ -915,6 +936,7 @@ tbody tr.is-active {
   }
 
   .tab {
+    flex: 1 1 0;
     min-height: 52px;
     padding: 10px 8px;
     border-radius: 16px;
@@ -1088,6 +1110,10 @@ tbody tr.is-active {
     min-width: 640px;
   }
 
+  .modal-table-wrap table {
+    min-width: 520px;
+  }
+
   .mobile-card-grid {
     grid-template-columns: 1fr;
   }
@@ -1102,6 +1128,10 @@ tbody tr.is-active {
 
   .mobile-card-list-fluid {
     grid-template-columns: 1fr;
+  }
+
+  #periods-mobile-cards {
+    max-height: 360px;
   }
 
   .toast-stack {
