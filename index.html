@@ -149,11 +149,23 @@
           <div class="panel-head">
             <div>
               <p class="eyebrow">Данные</p>
-              <h2>Импорт и экспорт JSON</h2>
+              <h2>Импорт и экспорт данных</h2>
             </div>
             <button id="export-json" class="button" type="button">Экспорт JSON</button>
           </div>
           <div class="form-grid data-transfer-grid">
+            <div class="field">
+              <span>Импорт Excel</span>
+              <div class="field-actions">
+                <button id="download-xlsx-template" class="button button-ghost" type="button">Скачать шаблон XLSX</button>
+                <button id="import-xlsx-trigger" class="button button-ghost" type="button">Выбрать XLS/XLSX</button>
+                <input id="import-xlsx-file" class="is-hidden" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+              </div>
+              <small class="field-hint">
+                Заполните одну таблицу по шаблону: каждая строка это одна запись оплаты или одна запись без оплаты. Перед загрузкой откроется предпросмотр.
+              </small>
+              <button id="open-xlsx-guide" class="inline-guide-link" type="button">Памятка по заполнению шаблона</button>
+            </div>
             <div class="field">
               <span>Импорт из файла</span>
               <div class="field-actions">
@@ -168,7 +180,7 @@
                 id="import-json-text"
                 class="search textarea"
                 rows="8"
-                placeholder="Вставьте сюда JSON целиком, затем нажмите «Импортировать JSON»"
+                placeholder="Вставьте сюда JSON целиком, затем нажмите «Импортировать JSON» - данная операция подходит для маленьких объемов информации"
               ></textarea>
               <div class="field-actions">
                 <button id="import-json-text-button" class="button button-ghost" type="button">Импортировать JSON</button>
@@ -356,9 +368,44 @@
         </div>
       </div>
 
+      <div class="modal-backdrop" id="xlsx-import-modal">
+        <div class="modal-window modal-window-wide">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Excel</p>
+              <h2>Предпросмотр импорта XLS/XLSX</h2>
+            </div>
+            <button id="close-xlsx-import-modal" class="button button-ghost" type="button">Закрыть</button>
+          </div>
+          <div id="xlsx-import-content"></div>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" id="xlsx-guide-modal">
+        <div class="modal-window">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Excel</p>
+              <h2>Памятка по заполнению шаблона</h2>
+            </div>
+            <button id="close-xlsx-guide-modal" class="button button-ghost" type="button">Закрыть</button>
+          </div>
+          <div class="preview-notes">
+            <div class="preview-note">Одна строка Excel = одна строка оплаты. Если у одной записи несколько оплат, запись повторяется в нескольких строках с одной и той же общей суммой.</div>
+            <div class="preview-note">Обязательные поля: Компания, Город, Месяц, Год, Дедлайн, Общая сумма к оплате.</div>
+            <div class="preview-note">Город заполняйте только названием без `г.`. Улица/Пригород и Примечание можно оставлять пустыми.</div>
+            <div class="preview-note">Месяц пишите так же, как в системе: Январь, Февраль, Март и так далее. Год указывайте числом: 2024, 2025, 2026.</div>
+            <div class="preview-note">Дедлайн и Дата оплаты лучше указывать в формате ДД.ММ.ГГГГ.</div>
+            <div class="preview-note">Если сумма оплаты есть, то должна быть либо Дата оплаты, либо отметка Дата неизвестна = Да.</div>
+            <div class="preview-note">Если по записи оплат пока нет, поля Сумма оплаты, Дата оплаты и Дата неизвестна можно оставить пустыми.</div>
+          </div>
+        </div>
+      </div>
+
       <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="./app.js" defer></script>
   </body>
 </html>

@@ -36,6 +36,7 @@ const state = {
   recordFormMonth: "",
   recordFormYear: "",
   isOverviewModalOpen: false,
+  isXlsxGuideOpen: false,
   overviewOpenFilter: null,
   overviewFilters: {
     cities: [],
@@ -66,6 +67,7 @@ const state = {
     years: [],
     paymentDateStatus: [],
   },
+  xlsxImportPreview: null,
   saving: false,
 };
 
@@ -123,7 +125,7 @@ function formatPaymentDate(payment) {
 }
 
 function toNumber(value) {
-  return Number.parseFloat(String(value || "").replace(",", "."));
+  return Number.parseFloat(String(value || "").replace(/[\s\u00A0]/g, "").replace(",", "."));
 }
 
 function setText(id, value) {
@@ -221,6 +223,87 @@ function formatFilterSummary(label, values) {
     return label;
   }
   return `${label}: ${values.length}`;
+}
+
+function normalizeSpreadsheetHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function parseSpreadsheetBoolean(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "y", "да", "есть", "unknown", "неизвестно"].includes(normalized);
+}
+
+function parseSpreadsheetDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = window.XLSX?.SSF?.parse_date_code?.(value);
+    if (parsed?.y && parsed?.m && parsed?.d) {
+      const month = String(parsed.m).padStart(2, "0");
+      const day = String(parsed.d).padStart(2, "0");
+      return `${parsed.y}-${month}-${day}`;
+    }
+  }
+
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return text;
+  }
+
+  const ruMatch = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (ruMatch) {
+    const day = String(Number(ruMatch[1])).padStart(2, "0");
+    const month = String(Number(ruMatch[2])).padStart(2, "0");
+    const rawYear = Number(ruMatch[3]);
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    return `${year}-${month}-${day}`;
+  }
+
+  return "";
+}
+
+function getRecordImportKey({ company, city, street, note, periodId, invoiceAmount }) {
+  return [company, city, street || "", note || "", periodId, Number(invoiceAmount).toFixed(2)].join("||");
+}
+
+function getRecordIdentityKey({ company, city, street, note, periodId }) {
+  return [company, city, street || "", note || "", periodId].join("||");
+}
+
+function getPaymentImportKey({ amount, date, dateUnknown }) {
+  return [Number(amount).toFixed(2), date || "", dateUnknown ? "unknown" : "known"].join("||");
+}
+
+function getImportStatusMeta(status) {
+  switch (status) {
+    case "new_record":
+      return { label: "Новая запись", className: "is-new" };
+    case "will_update":
+      return { label: "Будет обновлена", className: "is-update" };
+    case "will_replace":
+      return { label: "Будет заменена", className: "is-replace" };
+    case "duplicate_skipped":
+      return { label: "Дубль, пропущен", className: "is-duplicate" };
+    default:
+      return { label: "Без изменений", className: "" };
+  }
 }
 
 function matchesPaymentDateStatus(record, selectedStatuses) {
@@ -612,6 +695,665 @@ async function handleImportJsonText() {
   } catch (error) {
     showToast("Ошибка импорта", error instanceof Error ? error.message : "Не удалось импортировать JSON.");
   }
+}
+
+function getXlsxTemplateRows() {
+  return [
+    {
+      Компания: "АЛОНИС",
+      Город: "Пермь",
+      "Улица/Пригород": "",
+      Примечание: "",
+      Месяц: "Октябрь",
+      Год: 2024,
+      Дедлайн: "09.01.2025",
+      "Общая сумма к оплате": "2408250,00",
+      "Сумма оплаты": "460500,00",
+      "Дата оплаты": "16.12.2024",
+      "Дата неизвестна": "",
+    },
+    {
+      Компания: "АЛОНИС",
+      Город: "Пермь",
+      "Улица/Пригород": "",
+      Примечание: "",
+      Месяц: "Октябрь",
+      Год: 2024,
+      Дедлайн: "09.01.2025",
+      "Общая сумма к оплате": "2408250,00",
+      "Сумма оплаты": "539500,00",
+      "Дата оплаты": "13.01.2025",
+      "Дата неизвестна": "",
+    },
+    {
+      Компания: "АРНОТТИ",
+      Город: "Новосибирск",
+      "Улица/Пригород": "",
+      Примечание: "Желдор",
+      Месяц: "Декабрь",
+      Год: 2024,
+      Дедлайн: "07.03.2025",
+      "Общая сумма к оплате": "1652346,00",
+      "Сумма оплаты": "652346,00",
+      "Дата оплаты": "",
+      "Дата неизвестна": "Да",
+    },
+    {
+      Компания: "АРНОТТИ",
+      Город: "Новоуральск",
+      "Улица/Пригород": "",
+      Примечание: "",
+      Месяц: "Декабрь",
+      Год: 2024,
+      Дедлайн: "07.03.2025",
+      "Общая сумма к оплате": "2680650,00",
+      "Сумма оплаты": "",
+      "Дата оплаты": "",
+      "Дата неизвестна": "",
+    },
+  ];
+}
+
+function downloadXlsxTemplate() {
+  if (!window.XLSX) {
+    showToast("Excel пока недоступен", "Библиотека для XLS/XLSX еще не загрузилась. Попробуйте через пару секунд.");
+    return;
+  }
+
+  const workbook = window.XLSX.utils.book_new();
+  const rows = getXlsxTemplateRows();
+  const worksheet = window.XLSX.utils.json_to_sheet(rows);
+  const hints = window.XLSX.utils.aoa_to_sheet([
+    ["Поле", "Как заполнять"],
+    ["Компания", "Обязательно. Только АЛОНИС или АРНОТТИ, если система работает только с ними."],
+    ["Город", "Обязательно. Только название города без «г.»."],
+    ["Улица/Пригород", "Необязательно. Для филиалов, улиц и пригородов."],
+    ["Примечание", "Необязательно. Например: Желдор, Доп."],
+    ["Месяц", "Обязательно. Например: Октябрь."],
+    ["Год", "Обязательно. Например: 2024."],
+    ["Дедлайн", "Обязательно. Формат: ДД.ММ.ГГГГ."],
+    ["Общая сумма к оплате", "Обязательно. Одна и та же сумма повторяется во всех строках одной записи."],
+    ["Сумма оплаты", "Необязательно. Если платежей пока нет, оставить пустым."],
+    ["Дата оплаты", "Необязательно. Если дата известна, указать ДД.ММ.ГГГГ."],
+    ["Дата неизвестна", "Указать Да, если сумма оплаты есть, а даты нет."],
+  ]);
+  window.XLSX.utils.book_append_sheet(workbook, worksheet, "Импорт");
+  window.XLSX.utils.book_append_sheet(workbook, hints, "Инструкция");
+  window.XLSX.writeFile(workbook, "debit-import-template.xlsx");
+  showToast("Шаблон XLSX выгружен", "Менеджер может заполнять файл по этому образцу.");
+}
+
+function parseXlsxRows(sheetRows) {
+  const rows = sheetRows.filter((row) =>
+    Object.values(row || {}).some((value) => String(value ?? "").trim() !== ""),
+  );
+  if (!rows.length) {
+    throw new Error("В Excel нет заполненных строк для импорта.");
+  }
+
+  const normalizedRows = rows.map((row, index) => {
+    const normalized = {};
+    Object.entries(row).forEach(([key, value]) => {
+      normalized[normalizeSpreadsheetHeader(key)] = value;
+    });
+
+    const month = capitalizeMonth(normalized.месяц || "");
+    const year = Number(String(normalized.год || "").trim());
+    const company = String(normalized.компания || "").trim().toUpperCase();
+    const city = String(normalized.город || "").trim();
+    const street = String(normalized["улицапригород"] || "").trim();
+    const note = String(normalized.примечание || "").trim();
+    const dueDate = parseSpreadsheetDate(normalized.дедлайн);
+    const invoiceAmount = toNumber(normalized["общаясуммакоплате"]);
+    const paymentAmountRaw = String(normalized["суммаоплаты"] ?? "").trim();
+    const paymentAmount = paymentAmountRaw ? toNumber(paymentAmountRaw) : null;
+    const paymentDate = parseSpreadsheetDate(normalized["датаоплаты"]);
+    const paymentDateUnknown = parseSpreadsheetBoolean(normalized["датанеизвестна"]);
+
+    if (!company || !city || !month || !year || !dueDate || !Number.isFinite(invoiceAmount)) {
+      throw new Error(
+        `Строка ${index + 2}: обязательны поля Компания, Город, Месяц, Год, Дедлайн и Общая сумма к оплате.`,
+      );
+    }
+
+    if (!MONTH_OPTIONS.includes(month)) {
+      throw new Error(`Строка ${index + 2}: месяц «${month}» не распознан.`);
+    }
+
+    if (!Number.isFinite(year) || year < 2000) {
+      throw new Error(`Строка ${index + 2}: год указан некорректно.`);
+    }
+
+    if (paymentAmount !== null && !Number.isFinite(paymentAmount)) {
+      throw new Error(`Строка ${index + 2}: сумма оплаты указана некорректно.`);
+    }
+
+    if ((paymentDate || paymentDateUnknown) && paymentAmount === null) {
+      throw new Error(`Строка ${index + 2}: если указана дата оплаты или отметка о неизвестной дате, нужна сумма оплаты.`);
+    }
+
+    if (paymentAmount !== null && !paymentDate && !paymentDateUnknown) {
+      throw new Error(`Строка ${index + 2}: для суммы оплаты нужно указать дату оплаты или поставить «Дата неизвестна = Да».`);
+    }
+
+    if (paymentDate && paymentDateUnknown) {
+      throw new Error(`Строка ${index + 2}: укажите либо дату оплаты, либо отметку «Дата неизвестна», но не оба поля сразу.`);
+    }
+
+    return {
+      rowId: createId("xlsxrow"),
+      sourceRowNumber: index + 2,
+      company,
+      city,
+      street,
+      note,
+      month,
+      year,
+      dueDate,
+      invoiceAmount: Number(invoiceAmount.toFixed(2)),
+      paymentAmount: paymentAmount === null ? "" : String(Number(paymentAmount.toFixed(2))),
+      paymentDate,
+      paymentDateUnknown,
+    };
+  });
+
+  return normalizedRows;
+}
+
+function buildImportPreview(rows, sourceLabel, importStrategy = "add_only") {
+  const nextData = structuredClone(state.data);
+  const previewRows = structuredClone(rows);
+  const previewRowMap = new Map(previewRows.map((row) => [row.rowId, row]));
+  const periodMap = new Map(nextData.periods.map((period) => [`${period.month}||${period.year}`, period]));
+  const exactRecordMap = new Map();
+  const identityRecordMap = new Map();
+  const warnings = [];
+  const counters = {
+    sourceRows: rows.length,
+    newPeriods: 0,
+    reusedPeriods: 0,
+    newRecords: 0,
+    matchedRecords: 0,
+    updatedRecords: 0,
+    replacedRecords: 0,
+    newPayments: 0,
+    duplicatePayments: 0,
+    deadlineConflicts: 0,
+    unknownDatePayments: 0,
+  };
+
+  nextData.records.forEach((record) => {
+    const period = nextData.periods.find((item) => item.id === record.periodId);
+    if (!period) {
+      return;
+    }
+    const key = getRecordImportKey({
+      company: record.company,
+      city: record.city,
+      street: record.street,
+      note: record.note,
+      periodId: record.periodId,
+      invoiceAmount: record.invoiceAmount,
+    });
+    const identityKey = getRecordIdentityKey({
+      company: record.company,
+      city: record.city,
+      street: record.street,
+      note: record.note,
+      periodId: record.periodId,
+    });
+    if (!exactRecordMap.has(key)) {
+      exactRecordMap.set(key, record);
+    }
+    if (!identityRecordMap.has(identityKey)) {
+      identityRecordMap.set(identityKey, record);
+    }
+  });
+
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const key = [
+      row.company,
+      row.city,
+      row.street || "",
+      row.note || "",
+      row.month,
+      row.year,
+      Number(row.invoiceAmount).toFixed(2),
+    ].join("||");
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(row);
+  });
+
+  grouped.forEach((groupRows) => {
+    const sample = groupRows[0];
+    const periodKey = `${sample.month}||${sample.year}`;
+    let period = periodMap.get(periodKey);
+    if (!period) {
+      period = {
+        id: createId("period"),
+        month: sample.month,
+        year: sample.year,
+        dueDate: sample.dueDate,
+      };
+      nextData.periods.push(period);
+      periodMap.set(periodKey, period);
+      counters.newPeriods += 1;
+    } else {
+      counters.reusedPeriods += 1;
+      if (!period.dueDate && sample.dueDate) {
+        period.dueDate = sample.dueDate;
+      } else if (period.dueDate && sample.dueDate && period.dueDate !== sample.dueDate) {
+        counters.deadlineConflicts += 1;
+        if (importStrategy === "update_existing" || importStrategy === "replace_existing") {
+          warnings.push(
+            `${sample.month} ${sample.year}: дедлайн периода обновлен с ${formatDate(period.dueDate)} на ${formatDate(sample.dueDate)} по выбранному режиму импорта.`,
+          );
+          period.dueDate = sample.dueDate;
+        } else {
+          warnings.push(
+            `${sample.month} ${sample.year}: в системе уже есть дедлайн ${formatDate(period.dueDate)}, в Excel указан ${formatDate(sample.dueDate)}. Сохранен текущий дедлайн системы.`,
+          );
+        }
+      }
+    }
+
+    const recordKeyExact = getRecordImportKey({
+      company: sample.company,
+      city: sample.city,
+      street: sample.street,
+      note: sample.note,
+      periodId: period.id,
+      invoiceAmount: sample.invoiceAmount,
+    });
+    const recordIdentityKey = getRecordIdentityKey({
+      company: sample.company,
+      city: sample.city,
+      street: sample.street,
+      note: sample.note,
+      periodId: period.id,
+    });
+
+    let record = null;
+    if (importStrategy === "add_only") {
+      record = exactRecordMap.get(recordKeyExact) || null;
+    } else {
+      record = identityRecordMap.get(recordIdentityKey) || null;
+    }
+
+    if (!record) {
+      record = {
+        id: createId("record"),
+        company: sample.company,
+        city: sample.city,
+        street: sample.street,
+        note: sample.note,
+        periodId: period.id,
+        invoiceAmount: sample.invoiceAmount,
+        payments: [],
+      };
+      nextData.records.push(record);
+      exactRecordMap.set(recordKeyExact, record);
+      identityRecordMap.set(recordIdentityKey, record);
+      counters.newRecords += 1;
+      groupRows.forEach((row) => {
+        const previewRow = previewRowMap.get(row.rowId);
+        if (previewRow) {
+          previewRow.importStatus = "new_record";
+        }
+      });
+    } else {
+      counters.matchedRecords += 1;
+      if (importStrategy === "update_existing" || importStrategy === "replace_existing") {
+        if (Number(record.invoiceAmount).toFixed(2) !== Number(sample.invoiceAmount).toFixed(2)) {
+          warnings.push(
+            `${sample.company} • ${sample.city} • ${sample.month} ${sample.year}: общая сумма обновлена с ${formatMoney(record.invoiceAmount)} на ${formatMoney(sample.invoiceAmount)}.`,
+          );
+        }
+        record.invoiceAmount = sample.invoiceAmount;
+      }
+      if (importStrategy === "replace_existing") {
+        record.payments = [];
+        counters.replacedRecords += 1;
+        groupRows.forEach((row) => {
+          const previewRow = previewRowMap.get(row.rowId);
+          if (previewRow) {
+            previewRow.importStatus = "will_replace";
+          }
+        });
+      } else if (importStrategy === "update_existing") {
+        counters.updatedRecords += 1;
+        groupRows.forEach((row) => {
+          const previewRow = previewRowMap.get(row.rowId);
+          if (previewRow) {
+            previewRow.importStatus = "will_update";
+          }
+        });
+      } else {
+        groupRows.forEach((row) => {
+          const previewRow = previewRowMap.get(row.rowId);
+          if (previewRow && !previewRow.importStatus) {
+            previewRow.importStatus = "duplicate_skipped";
+          }
+        });
+      }
+    }
+
+    const existingPaymentKeys = new Set(record.payments.map(getPaymentImportKey));
+    groupRows.forEach((row) => {
+      const hasPayment = row.paymentAmount !== "";
+      if (!hasPayment) {
+        return;
+      }
+
+      const normalizedPayment = {
+        id: createId("payment"),
+        amount: Number(toNumber(row.paymentAmount).toFixed(2)),
+        date: row.paymentDateUnknown ? "" : row.paymentDate,
+        dateUnknown: row.paymentDateUnknown,
+      };
+      const paymentKey = getPaymentImportKey(normalizedPayment);
+
+      if (existingPaymentKeys.has(paymentKey)) {
+        counters.duplicatePayments += 1;
+        const previewRow = previewRowMap.get(row.rowId);
+        if (previewRow) {
+          previewRow.importStatus = "duplicate_skipped";
+        }
+        return;
+      }
+
+      record.payments.push(normalizedPayment);
+      existingPaymentKeys.add(paymentKey);
+      counters.newPayments += 1;
+      if (row.paymentDateUnknown) {
+        counters.unknownDatePayments += 1;
+      }
+      const previewRow = previewRowMap.get(row.rowId);
+      if (previewRow && previewRow.importStatus !== "new_record" && previewRow.importStatus !== "will_replace") {
+        previewRow.importStatus = record && (importStrategy === "update_existing" || importStrategy === "add_only")
+          ? "will_update"
+          : previewRow.importStatus || "will_update";
+      }
+    });
+  });
+
+  return {
+    sourceLabel,
+    rows: previewRows,
+    nextData,
+    counters,
+    warnings: [...new Set(warnings)],
+    importStrategy,
+    mode: "preview",
+  };
+}
+
+function renderXlsxImportModal() {
+  const modal = document.getElementById("xlsx-import-modal");
+  const content = document.getElementById("xlsx-import-content");
+  const preview = state.xlsxImportPreview;
+
+  if (!preview) {
+    modal.classList.remove("is-open");
+    content.innerHTML = "";
+    return;
+  }
+
+  const isEditMode = preview.mode === "edit";
+  const rowsMarkup = preview.rows
+    .map(
+      (row) => {
+        const status = getImportStatusMeta(row.importStatus);
+        return `
+        <tr class="${!isEditMode && status.className ? `preview-row ${status.className}` : ""}">
+          <td>${row.sourceRowNumber}</td>
+          <td>${isEditMode ? '<span class="subtle">После пересчета</span>' : `<span class="import-status ${status.className}">${status.label}</span>`}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="company" data-row-id="${row.rowId}" value="${row.company}" />` : row.company}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="city" data-row-id="${row.rowId}" value="${row.city}" />` : row.city}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="street" data-row-id="${row.rowId}" value="${row.street}" />` : row.street || '<span class="subtle">—</span>'}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="note" data-row-id="${row.rowId}" value="${row.note}" />` : row.note || '<span class="subtle">—</span>'}</td>
+          <td>${isEditMode ? `<select class="search search-table" data-xlsx-edit="month" data-row-id="${row.rowId}">${MONTH_OPTIONS.map((month) => `<option value="${month}" ${row.month === month ? "selected" : ""}>${month}</option>`).join("")}</select>` : row.month}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="year" data-row-id="${row.rowId}" type="number" value="${row.year}" />` : row.year}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="dueDate" data-row-id="${row.rowId}" type="date" value="${row.dueDate}" />` : formatDate(row.dueDate)}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="invoiceAmount" data-row-id="${row.rowId}" type="number" step="0.01" value="${row.invoiceAmount}" />` : formatMoney(row.invoiceAmount)}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="paymentAmount" data-row-id="${row.rowId}" type="number" step="0.01" value="${row.paymentAmount}" />` : row.paymentAmount ? formatMoney(toNumber(row.paymentAmount)) : '<span class="subtle">—</span>'}</td>
+          <td>${isEditMode ? `<input class="search search-table" data-xlsx-edit="paymentDate" data-row-id="${row.rowId}" type="date" value="${row.paymentDate}" />` : row.paymentDate ? formatDate(row.paymentDate) : '<span class="subtle">—</span>'}</td>
+          <td>${isEditMode ? `<input data-xlsx-edit="paymentDateUnknown" data-row-id="${row.rowId}" type="checkbox" ${row.paymentDateUnknown ? "checked" : ""} />` : row.paymentDateUnknown ? "Да" : "—"}</td>
+        </tr>
+      `;
+      },
+    )
+    .join("");
+
+  content.innerHTML = `
+    <div class="preview-grid">
+      <article class="preview-card"><span>Источник</span><strong>${preview.sourceLabel}</strong></article>
+      <article class="preview-card"><span>Строк в Excel</span><strong>${number.format(preview.counters.sourceRows)}</strong></article>
+      <article class="preview-card"><span>Новых записей</span><strong>${number.format(preview.counters.newRecords)}</strong></article>
+      <article class="preview-card"><span>Новых оплат</span><strong>${number.format(preview.counters.newPayments)}</strong></article>
+    </div>
+    <div class="preview-grid">
+      <article class="preview-card"><span>Новых периодов</span><strong>${number.format(preview.counters.newPeriods)}</strong></article>
+      <article class="preview-card"><span>Совпавших записей</span><strong>${number.format(preview.counters.matchedRecords)}</strong></article>
+      <article class="preview-card"><span>Обновлено записей</span><strong>${number.format(preview.counters.updatedRecords + preview.counters.replacedRecords)}</strong></article>
+      <article class="preview-card"><span>Пропущено дублей оплат</span><strong>${number.format(preview.counters.duplicatePayments)}</strong></article>
+      <article class="preview-card"><span>Неизвестных дат</span><strong>${number.format(preview.counters.unknownDatePayments)}</strong></article>
+    </div>
+    <div class="preview-notes">
+      <div class="preview-note">
+        <strong>Режим импорта:</strong>
+        <div class="table-actions" style="margin-top:8px;">
+          <label class="filter-option">
+            <input type="radio" name="xlsx-import-strategy" value="add_only" ${preview.importStrategy === "add_only" ? "checked" : ""} />
+            <span>Только новое</span>
+          </label>
+          <label class="filter-option">
+            <input type="radio" name="xlsx-import-strategy" value="update_existing" ${preview.importStrategy === "update_existing" ? "checked" : ""} />
+            <span>Обновить существующую запись</span>
+          </label>
+          <label class="filter-option">
+            <input type="radio" name="xlsx-import-strategy" value="replace_existing" ${preview.importStrategy === "replace_existing" ? "checked" : ""} />
+            <span>Заменить существующую запись</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="preview-notes">
+      <div class="preview-note">Шаблон: одна строка Excel = одна строка оплаты. Если у записи несколько оплат, запись повторяется в нескольких строках с одной и той же общей суммой.</div>
+      <div class="preview-note">
+        ${
+          preview.importStrategy === "add_only"
+            ? "Только новое: существующие записи не меняются, добавляются только новые записи и новые оплаты."
+            : preview.importStrategy === "update_existing"
+              ? "Обновить существующую запись: если запись уже найдена, система обновит общую сумму, дедлайн периода и дозагрузит недостающие оплаты."
+              : "Заменить существующую запись: если запись уже найдена, система обновит общую сумму, дедлайн периода и полностью заменит список оплат данными из Excel."
+        }
+      </div>
+      ${
+        preview.warnings.length
+          ? preview.warnings.map((warning) => `<div class="preview-note is-warning">${warning}</div>`).join("")
+          : '<div class="preview-note">Конфликтов не найдено. Данные можно загружать.</div>'
+      }
+    </div>
+    <div class="table-wrap table-window">
+      <table>
+        <thead>
+          <tr>
+            <th>Строка</th>
+            <th>Статус</th>
+            <th>Компания</th>
+            <th>Город</th>
+            <th>Улица/Пригород</th>
+            <th>Примечание</th>
+            <th>Месяц</th>
+            <th>Год</th>
+            <th>Дедлайн</th>
+            <th>Общая сумма</th>
+            <th>Сумма оплаты</th>
+            <th>Дата оплаты</th>
+            <th>Дата неизвестна</th>
+          </tr>
+        </thead>
+        <tbody>${rowsMarkup}</tbody>
+      </table>
+    </div>
+    <div class="panel-head modal-head">
+      <div>
+        <p class="eyebrow">Действия</p>
+        <h3>${isEditMode ? "Редактирование строк импорта" : "Подтверждение загрузки"}</h3>
+      </div>
+      <div class="actions">
+        ${
+          isEditMode
+            ? `
+              <button id="xlsx-import-back-preview" class="button button-ghost" type="button">Пересчитать предпросмотр</button>
+              <button id="xlsx-import-cancel" class="button button-ghost" type="button">Отменить</button>
+            `
+            : `
+              <button id="xlsx-import-edit" class="button button-ghost" type="button">Отредактировать</button>
+              <button id="xlsx-import-apply" class="button" type="button">Загрузить в систему</button>
+              <button id="xlsx-import-cancel" class="button button-ghost" type="button">Отменить</button>
+            `
+        }
+      </div>
+    </div>
+  `;
+
+  modal.classList.add("is-open");
+}
+
+function renderXlsxGuideModal() {
+  const modal = document.getElementById("xlsx-guide-modal");
+  if (!modal) {
+    return;
+  }
+  modal.classList.toggle("is-open", state.isXlsxGuideOpen);
+}
+
+async function handleImportXlsxFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    if (!window.XLSX) {
+      throw new Error("Библиотека Excel еще не загрузилась. Повторите попытку через пару секунд.");
+    }
+    const buffer = await file.arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: "array", cellDates: true });
+    const sheetName = workbook.SheetNames.includes("Импорт") ? "Импорт" : workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = window.XLSX.utils.sheet_to_json(worksheet, {
+      defval: "",
+      raw: true,
+      blankrows: false,
+    });
+    state.xlsxImportPreview = buildImportPreview(parseXlsxRows(rows), file.name, "add_only");
+    renderXlsxImportModal();
+    showToast("Excel загружен", "Открылся предпросмотр перед импортом.");
+  } catch (error) {
+    showToast("Ошибка импорта XLS/XLSX", error instanceof Error ? error.message : "Не удалось разобрать Excel-файл.");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function updateImportPreviewRow(rowId, field, value) {
+  const preview = state.xlsxImportPreview;
+  if (!preview) {
+    return;
+  }
+
+  const row = preview.rows.find((item) => item.rowId === rowId);
+  if (!row) {
+    return;
+  }
+
+  if (field === "paymentDateUnknown") {
+    row.paymentDateUnknown = Boolean(value);
+    if (row.paymentDateUnknown) {
+      row.paymentDate = "";
+    }
+    return;
+  }
+
+  row[field] = value;
+}
+
+function rebuildImportPreviewFromEditedRows() {
+  if (!state.xlsxImportPreview) {
+    return;
+  }
+
+  const rows = state.xlsxImportPreview.rows.map((row) => {
+    const invoiceAmount = toNumber(row.invoiceAmount);
+    const paymentAmountText = String(row.paymentAmount || "").trim();
+    const normalizedRow = {
+      ...row,
+      company: String(row.company || "").trim().toUpperCase(),
+      city: String(row.city || "").trim(),
+      street: String(row.street || "").trim(),
+      note: String(row.note || "").trim(),
+      month: capitalizeMonth(row.month),
+      year: Number(String(row.year || "").trim()),
+      dueDate: parseSpreadsheetDate(row.dueDate),
+      invoiceAmount,
+      paymentAmount: paymentAmountText ? String(toNumber(paymentAmountText)) : "",
+      paymentDate: parseSpreadsheetDate(row.paymentDate),
+      paymentDateUnknown: Boolean(row.paymentDateUnknown),
+    };
+
+    if (
+      !normalizedRow.company ||
+      !normalizedRow.city ||
+      !normalizedRow.month ||
+      !normalizedRow.year ||
+      !normalizedRow.dueDate ||
+      !Number.isFinite(normalizedRow.invoiceAmount)
+    ) {
+      throw new Error(`Строка ${normalizedRow.sourceRowNumber}: заполните обязательные поля перед загрузкой.`);
+    }
+
+    if (!MONTH_OPTIONS.includes(normalizedRow.month)) {
+      throw new Error(`Строка ${normalizedRow.sourceRowNumber}: месяц указан некорректно.`);
+    }
+
+    if (normalizedRow.paymentAmount && !normalizedRow.paymentDate && !normalizedRow.paymentDateUnknown) {
+      throw new Error(`Строка ${normalizedRow.sourceRowNumber}: для суммы оплаты нужна дата или отметка «Дата неизвестна».`);
+    }
+
+    if (normalizedRow.paymentDate && normalizedRow.paymentDateUnknown) {
+      throw new Error(`Строка ${normalizedRow.sourceRowNumber}: дата оплаты и отметка «Дата неизвестна» не могут быть заполнены одновременно.`);
+    }
+
+    return normalizedRow;
+  });
+
+  state.xlsxImportPreview = buildImportPreview(
+    rows,
+    state.xlsxImportPreview.sourceLabel,
+    state.xlsxImportPreview.importStrategy || "add_only",
+  );
+}
+
+async function applyXlsxImport() {
+  if (!state.xlsxImportPreview) {
+    return;
+  }
+
+  state.data = state.xlsxImportPreview.nextData;
+  state.xlsxImportPreview = null;
+  state.selectedRecordId = null;
+  state.selectedCompany = null;
+  resetPaymentForm();
+  await saveData();
+  rerender();
+  renderXlsxImportModal();
+  showToast("XLS/XLSX импортирован", "Данные из Excel добавлены в текущую базу.");
 }
 
 function getPeriodMap() {
@@ -1459,6 +2201,8 @@ function rerender() {
   renderPeriods(derived.periods, state.data.records);
   renderWorkspaceRecords(derived.records);
   renderWorkspaceSettings();
+  renderXlsxImportModal();
+  renderXlsxGuideModal();
 }
 
 function getSelectedRecord() {
@@ -1896,9 +2640,50 @@ async function main() {
     rerender();
   });
 
+  document.getElementById("open-xlsx-guide").addEventListener("click", () => {
+    state.isXlsxGuideOpen = true;
+    rerender();
+  });
+
+  document.getElementById("close-xlsx-guide-modal").addEventListener("click", () => {
+    state.isXlsxGuideOpen = false;
+    rerender();
+  });
+
+  document.getElementById("xlsx-guide-modal").addEventListener("click", (event) => {
+    if (event.target.id !== "xlsx-guide-modal") {
+      return;
+    }
+    state.isXlsxGuideOpen = false;
+    rerender();
+  });
+
+  document.getElementById("close-xlsx-import-modal").addEventListener("click", () => {
+    state.xlsxImportPreview = null;
+    renderXlsxImportModal();
+  });
+
+  document.getElementById("xlsx-import-modal").addEventListener("click", (event) => {
+    if (event.target.id !== "xlsx-import-modal") {
+      return;
+    }
+    state.xlsxImportPreview = null;
+    renderXlsxImportModal();
+  });
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.isOverviewModalOpen) {
       state.isOverviewModalOpen = false;
+      rerender();
+      return;
+    }
+    if (event.key === "Escape" && state.xlsxImportPreview) {
+      state.xlsxImportPreview = null;
+      renderXlsxImportModal();
+      return;
+    }
+    if (event.key === "Escape" && state.isXlsxGuideOpen) {
+      state.isXlsxGuideOpen = false;
       rerender();
     }
   });
@@ -1912,6 +2697,11 @@ async function main() {
   });
   document.getElementById("save-settings").addEventListener("click", handleSaveSettings);
   document.getElementById("export-json").addEventListener("click", handleExportJson);
+  document.getElementById("download-xlsx-template").addEventListener("click", downloadXlsxTemplate);
+  document.getElementById("import-xlsx-trigger").addEventListener("click", () => {
+    document.getElementById("import-xlsx-file").click();
+  });
+  document.getElementById("import-xlsx-file").addEventListener("change", handleImportXlsxFile);
   document.getElementById("import-json-trigger").addEventListener("click", () => {
     document.getElementById("import-json-file").click();
   });
@@ -2109,6 +2899,65 @@ async function main() {
     const button = event.target.closest("[data-delete-payment]");
     if (!button) return;
     await handleDeletePayment(button.dataset.deletePayment);
+  });
+
+  document.getElementById("xlsx-import-content").addEventListener("click", async (event) => {
+    if (event.target.id === "xlsx-import-edit") {
+      state.xlsxImportPreview.mode = "edit";
+      renderXlsxImportModal();
+      return;
+    }
+    if (event.target.id === "xlsx-import-back-preview") {
+      try {
+        rebuildImportPreviewFromEditedRows();
+        renderXlsxImportModal();
+      } catch (error) {
+        showToast("Ошибка в строках импорта", error instanceof Error ? error.message : "Не удалось пересчитать предпросмотр.");
+      }
+      return;
+    }
+    if (event.target.id === "xlsx-import-apply") {
+      await applyXlsxImport();
+      return;
+    }
+    if (event.target.id === "xlsx-import-cancel") {
+      state.xlsxImportPreview = null;
+      renderXlsxImportModal();
+    }
+  });
+
+  document.getElementById("xlsx-import-content").addEventListener("input", (event) => {
+    const field = event.target.dataset.xlsxEdit;
+    const rowId = event.target.dataset.rowId;
+    if (!field || !rowId) {
+      return;
+    }
+    updateImportPreviewRow(rowId, field, event.target.value);
+  });
+
+  document.getElementById("xlsx-import-content").addEventListener("change", (event) => {
+    if (event.target.name === "xlsx-import-strategy") {
+      if (!state.xlsxImportPreview) {
+        return;
+      }
+      state.xlsxImportPreview = buildImportPreview(
+        state.xlsxImportPreview.rows,
+        state.xlsxImportPreview.sourceLabel,
+        event.target.value,
+      );
+      renderXlsxImportModal();
+      return;
+    }
+    const field = event.target.dataset.xlsxEdit;
+    const rowId = event.target.dataset.rowId;
+    if (!field || !rowId) {
+      return;
+    }
+    if (field === "paymentDateUnknown") {
+      updateImportPreviewRow(rowId, field, event.target.checked);
+      return;
+    }
+    updateImportPreviewRow(rowId, field, event.target.value);
   });
 
   rerender();
